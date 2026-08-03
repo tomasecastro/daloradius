@@ -13,7 +13,14 @@ This directory contains the TLS configuration for the MariaDB (`radius-mysql`) s
 
 1. `tls.cnf` is mounted into the MariaDB container at `/etc/mysql/conf.d/tls.cnf`
 2. It references certificates located in `/etc/mysql/certs/` (a named volume `mariadb_certs`)
-3. The `mariadb_certs` volume is populated automatically by `setup/install-docker-compose.sh` when `FREERADIUS_SQL_TLS=enabled|require`. For manual setup without the installer, see "Enabling TLS" below.
+3. The `mariadb_certs` volume can be populated **automatically** by
+   `setup/install-docker-compose.sh` when `ENABLE_TLS_CERTS=true` in `.env`, or
+   **manually** as described in "Enabling TLS" below.
+
+> **Feature flag `ENABLE_TLS_CERTS`**: automatic certificate generation exists in the
+> fork but is **disabled by default** (feature flag, `false`). This mirrors the behavior
+> removed in the May 2026 upstream release; the fork restores it as an opt-in feature.
+> Set `ENABLE_TLS_CERTS=true` in `.env` to enable automatic population of `mariadb_certs`.
 
 The `../../docker/mariadb/tls.cnf` paths in the compose file resolve from the compose file directory (`docker/mariadb/`). Do NOT use `--project-directory .` with standalone compose files.
 
@@ -37,7 +44,10 @@ FREERADIUS_SQL_TLS=require
 
 ### 2. Generate or provide certificates
 
-Place your certificates in `./secrets/db/`:
+**Option A — automatic (feature flag):** set `ENABLE_TLS_CERTS=true` in `.env` and run
+`setup/install-docker-compose.sh`; it populates the `mariadb_certs` volume for you.
+
+**Option B — manual:** place your certificates in `./secrets/db/`:
 
 - `mysql_ca.pem`
 - `mysql_server.pem`
@@ -104,6 +114,17 @@ docker compose -f docker/mariadb/docker-compose.yml down
 # View logs
 docker compose -f docker/mariadb/docker-compose.yml logs -f
 
-# Verify TLS status
-docker exec radius-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SHOW GLOBAL VARIABLES LIKE 'have_ssl';"
+# Verify TLS status (secure: reads password from the secret file, not the CLI)
+docker exec -i radius-mysql sh -c 'exec mysql --defaults-extra-file=<(printf "[client]\npassword=%s\n" "$MYSQL_ROOT_PASSWORD") -uroot -e "SHOW GLOBAL VARIABLES LIKE '\''have_ssl'\'';"'
 ```
+
+> **Security note on verification**: never pass the password via `-p"$PASS"` on the
+> command line (it leaks into process listings). Use a defaults file or the
+> `MYSQL_ROOT_PASSWORD_FILE` secret path instead.
+
+## Restore on first boot (initdb)
+
+The compose file mounts `../../var/backup:/docker-entrypoint-initdb.d:ro`. SQL
+dumps placed in `./var/backup/` (created by `docker/daloradius/backup-db.sh`) are
+executed automatically by MariaDB on the **first** boot of an empty data volume.
+This restores data after a clean reinstall (ADR-0007).

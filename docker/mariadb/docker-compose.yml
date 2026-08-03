@@ -1,0 +1,73 @@
+# Standalone MariaDB service for daloRADIUS.
+#
+# Use this compose file when you want to run MariaDB independently
+# (e.g., for TLS setup, debugging, or as an external database).
+#
+# Usage:
+#   docker compose -f docker/mariadb/docker-compose.yml up -d
+#
+# Note: All relative paths use ../../ prefix (resolved from the compose file's
+# directory = docker/mariadb/ -> project root). Do NOT use --project-directory
+# with these files, as it changes path resolution and will break volume mounts.
+#
+# To enable TLS, uncomment the tls.cnf and mariadb_certs volume mounts below.
+# The FREERADIUS_SQL_TLS variable is consumed by FreeRADIUS's SQL client, not by MariaDB.
+# Also ensure certificates exist in ./secrets/db/ (see README.md).
+#
+# Decoupled from the root docker-compose.yml (1 of 3 services: mariadb, freeradius, daloradius).
+
+services:
+
+  radius-mysql:
+    image: mariadb:11.8
+    container_name: radius-mysql
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-radius}
+      - MYSQL_USER=${MYSQL_USER:-radius}
+      - MYSQL_PASSWORD_FILE=/run/secrets/MYSQL_PASSWORD
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/MYSQL_ROOT_PASSWORD
+      - FREERADIUS_SQL_TLS=${FREERADIUS_SQL_TLS:-disabled}
+    ports:
+      - '${MYSQL_HOST_PORT:-3306}:3306'
+    volumes:
+      - "../../data/mysql:/var/lib/mysql"
+      # Restore: SQL dumps in ./var/backup are executed on first boot (initdb)
+      # (created by docker/daloradius/backup-db.sh)
+      - "../../var/backup:/docker-entrypoint-initdb.d:ro"
+      # TLS: mount tls.cnf and certs (uncomment to enable):
+      # - "../../docker/mariadb/tls.cnf:/etc/mysql/conf.d/tls.cnf:ro"
+      # - "mariadb_certs:/etc/mysql/certs:ro"
+    secrets:
+      - MYSQL_ROOT_PASSWORD
+      - MYSQL_PASSWORD
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: ${MYSQL_HEALTH_START_PERIOD:-10m}
+    networks:
+      - radius-network
+
+networks:
+  radius-network:
+    name: radius-network
+    driver: bridge
+
+secrets:
+  MYSQL_ROOT_PASSWORD:
+    file: ../../secrets/db/mysql_root_password
+  MYSQL_PASSWORD:
+    file: ../../secrets/db/mysql_password
+
+volumes:
+  mariadb_certs:
+    # TLS certificates volume. Populated automatically by
+    # setup/install-docker-compose.sh when ENABLE_TLS_CERTS=true (disabled by default).
+    # Manual population: see docker/mariadb/README.md.
+    name: mariadb_certs
