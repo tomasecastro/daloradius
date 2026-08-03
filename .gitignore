@@ -8,6 +8,7 @@ invoice_preview.html
 !.env.example
 data/
 internal_data/
+secrets/
 
 var/log/*.log
 var/backup/*.sql
