@@ -8,7 +8,10 @@ invoice_preview.html
 !.env.example
 data/
 internal_data/
-secrets/
+secrets/**
+!secrets/**/
+!secrets/**/.gitkeep
+!secrets/**/*.md
 
 var/log/*.log
 var/backup/*.sql
