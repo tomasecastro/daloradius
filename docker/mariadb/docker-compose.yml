@@ -27,6 +27,7 @@ services:
     cap_drop:
       - NET_RAW
     environment:
+      - TZ=${TZ:-Europe/Vienna}
       - MYSQL_DATABASE=${MYSQL_DATABASE:-radius}
       - MYSQL_USER=${MYSQL_USER:-radius}
       - MYSQL_PASSWORD_FILE=/run/secrets/MYSQL_PASSWORD
