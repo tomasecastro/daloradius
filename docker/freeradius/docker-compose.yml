@@ -1,0 +1,79 @@
+# Standalone FreeRADIUS service for daloRADIUS.
+#
+# Use this compose file to run FreeRADIUS independently
+# (e.g., for debugging, testing, or as a standalone RADIUS server).
+#
+# Usage:
+#   docker compose -f docker/freeradius/docker-compose.yml up -d
+#
+# Note: All relative paths use ../../ prefix (resolved from the compose file's
+# directory = docker/freeradius/ -> project root). Do NOT use --project-directory
+# with these files, as it changes path resolution and will break volume mounts.
+#
+# Includes MariaDB automatically. To use an external DB, set MYSQL_HOST.
+
+include:
+  - ../mariadb/docker-compose.yml
+
+services:
+
+  radius:
+    container_name: radius
+    build:
+      context: ../..
+      dockerfile: docker/freeradius/Dockerfile
+      args:
+        TZ_DEFAULT: ${TZ:-Europe/Vienna}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+    depends_on:
+      radius-mysql:
+        condition: service_healthy
+    ports:
+      - '1812:1812/udp'
+      - '1813:1813/udp'
+    # ----------------------------------------------------------------------
+    # note: MYSQL_PASSWORD and DEFAULT_CLIENT_SECRET are listed here as env
+    # vars for documentation purposes. The actual credential source is the
+    # Docker Secret at /run/secrets/*, which read_secret_or_env() reads
+    # first. These env vars are never used when secrets are mounted.
+    # ----------------------------------------------------------------------
+    environment:
+      - TZ=${TZ:-Europe/Vienna}
+      - MYSQL_HOST=${MYSQL_HOST:-radius-mysql}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-radius}
+      - MYSQL_USER=${MYSQL_USER:-radius}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
+      - DEFAULT_CLIENT_SECRET=${DEFAULT_CLIENT_SECRET:-}
+      - FREERADIUS_SQL_TLS=${FREERADIUS_SQL_TLS:-disabled}
+    volumes:
+      - ../../data/freeradius:/data
+      - ../../logs/freeradius:/var/log/freeradius
+      - ../../docker/freeradius/ssl/cert_ext:/etc/freeradius/certs/cert_ext
+      - ../../docker/freeradius/ssl/private_ext:/etc/freeradius/certs/private_ext
+    secrets:
+      - MYSQL_PASSWORD
+      - DEFAULT_CLIENT_SECRET
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'FreeRADIUS-Statistics-Type = 1' | radclient -q -r 1 -t 3 127.0.0.1:18121 status adminsecret >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - radius-network
+
+networks:
+  radius-network:
+    name: radius-network
+    driver: bridge
+
+secrets:
+  MYSQL_PASSWORD:
+    file: ../../secrets/db/mysql_password
+  DEFAULT_CLIENT_SECRET:
+    file: ../../secrets/daloradius/daloradius_client_secret
