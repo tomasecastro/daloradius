@@ -65,8 +65,8 @@
     $extra_css = array();
 
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/dynamic_attributes.js",
+        "static/js/chart.umd.min.js",
+        "static/js/daloradius-charts.js",
     );
 
     $title = t('Intro','accthotspotcompare.php');
@@ -189,7 +189,7 @@
         close_tab($navkeys, 0);
 
         $categories = array( "unique_users", "login_hits", "total_session_time", "avg_session_time", );
-        $img_format = '<div class="my-3 text-center"><img src="%s" alt="%s"></div>';
+        $img_format = '<div class="my-3 text-center" style="height:384px"><canvas data-chart-source="%s" aria-label="%s" role="img"></canvas></div>';
 
         foreach ($categories as $i => $category) {
 

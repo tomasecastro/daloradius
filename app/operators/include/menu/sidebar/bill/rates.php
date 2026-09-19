@@ -32,6 +32,7 @@ $autocomplete = (isset($configValues['CONFIG_IFACE_AUTO_COMPLETE']) &&
 
 global $ratename, $username, $startdate, $enddate;
 
+
 include_once("include/management/populate_selectbox.php");
 $menu_usernames = get_users('CONFIG_DB_TBL_DALOUSERBILLINFO');
 $menu_ratenames = get_ratenames();
@@ -78,7 +79,7 @@ $components[] = array(
                         "id" => 'random',
                         "name" => "startdate",
                         "type" => "date",
-                        "value" => ((isset($startdate)) ? $startdate : date("Y-m-01")),
+                        "value" => ((!empty($startdate)) ? $startdate : ""),
                         "caption" => t('all','StartingDate'),
                         "tooltipText" => t('Tooltip','Date'),
                         "sidebar" => true,
@@ -88,7 +89,7 @@ $components[] = array(
                         "id" => 'random',
                         "name" => "enddate",
                         "type" => "date",
-                        "value" => ((isset($enddate)) ? $enddate : date("Y-m-t")),
+                        "value" => ((!empty($enddate)) ? $enddate : ""),
                         "caption" => t('all','EndingDate'),
                         "tooltipText" => t('Tooltip','Date'),
                         "sidebar" => true,
@@ -116,11 +117,11 @@ if (count($menu_ratenames) > 0) {
 }
 
 $sections = array();
-$sections[] = array( 'title' => 'Track Rates', 'descriptors' => $descriptors1 );
-$sections[] = array( 'title' => 'Rates Management', 'descriptors' => $descriptors2 );
+$sections[] = array( 'title' => t('sidebar', 'TrackRates'), 'descriptors' => $descriptors1 );
+$sections[] = array( 'title' => t('sidebar', 'RatesManagement'), 'descriptors' => $descriptors2 );
 
 // add sections to menu
 $menu = array(
-                'title' => 'Billing',
+                'title' => t('sidebar', 'Billing'),
                 'sections' => $sections,
              );

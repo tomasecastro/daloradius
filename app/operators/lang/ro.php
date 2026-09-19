@@ -159,7 +159,6 @@ $l['all']['RateCost'] = "Pretul de cost";
 $l['all']['Billed'] = "Facturat";
 $l['all']['TotalUsers'] = "Total Utilizatori";
 $l['all']['TotalBilled'] = "Total facturat";
-$l['all']['CardBank'] = "Card bancar";
 $l['all']['Type'] = "Tip";
 $l['all']['CardBank'] = "CardBank";
 $l['all']['MACAddress'] = "MAC Address";
@@ -550,6 +549,55 @@ $l['button']['HotspotsComparison'] = "Compara?ie hotspots ";
 
 $l['button']['CleanupStaleSessions'] = "Cur??ire surmenat Sessions ";
 $l['button']['DeleteAccountingRecords'] = "Delete ?nregistr?ri contabile";
+$l['maintenance'] = [
+    'title' => 'Întreținerea sesiunilor deschise',
+    'history' => 'Șterge istoricul contabil (toate înregistrările)',
+    'help' => <<<'HTML'
+    <h2 class="fs-6">Înainte de a începe</h2><p>O înregistrare contabilă deschisă nu este neapărat învechită. Acest instrument nu verifică activitatea utilizatorului sau conectivitatea NAS-ului.</p><h2 class="fs-6">Acțiuni</h2><ul><li><strong>Închide sesiunile</strong> păstrează utilizarea înregistrată și marchează rândurile selectate ca închise cu <code>Admin-Reset</code>. Nu deconectează utilizatorii de la NAS.</li><li><strong>Șterge înregistrările</strong> elimină definitiv rândurile deschise selectate și datele lor de utilizare.</li></ul><h2 class="fs-6">Domeniu și confirmare</h2><p>Potrivirea numelui de utilizator este exactă conform colaționării bazei de date. O dată corespunde sesiunilor începute strict înainte de miezul nopții acelei date în fusul orar al bazei de date/serverului de contabilizare.</p><p>Previzualizează fiecare operațiune înainte de confirmare. O previzualizare conține cel mult 100 de rânduri, expiră după 10 minute și poate fi utilizată o singură dată. Rândurile modificate sau care nu mai sunt eligibile sunt omise.</p>
+    HTML,
+    'close' => 'Închide sesiunile',
+    'delete' => 'Șterge înregistrările',
+    'details' => 'Detalii',
+    'openWarning' => 'Sesiunile deschise pot fi încă active.',
+    'openHelp' => 'Sunt eligibile doar înregistrările cu un timp de oprire lipsă sau cu valoarea zero moștenită. Nu se efectuează detectarea inactivității.',
+    'dateHelp' => 'Domeniul datei înseamnă ÎNCEPUTUL SESIUNII ÎNAINTE DE data selectată, exclusiv la 00:00:00 în fusul orar al bazei de date/serverului de contabilizare (nu în fusul orar al browserului). Nu este un prag pentru ultima activitate.',
+    'selectTitle' => 'Selectează sesiunile',
+    'closeSummary' => 'Păstrează datele contabile și marchează sesiunile selectate ca închise.',
+    'deleteSummary' => 'Elimină definitiv înregistrările contabile deschise selectate.',
+    'closeHelp' => 'Înregistrările sunt închise acum cu motivul de terminare manuală Admin-Reset. Aceasta nu deconectează utilizatorii de la NAS. Durata înregistrată și contoarele de trafic sunt păstrate neschimbate; actualizările contabile viitoare nu sunt garantate.',
+    'deleteHelp' => 'Ștergerea este ireversibilă. Utilizarea înregistrată este eliminată definitiv, iar rapoartele sau totalurile de utilizare se pot modifica. Istoricul închis nu este șters de acest instrument.',
+    'scope' => 'Selectează domeniul',
+    'username' => 'Nume de utilizator',
+    'date' => 'Începutul sesiunii înainte de data',
+    'value' => 'Nume de utilizator sau dată (YYYY-MM-DD)',
+    'filterHelp' => 'Schimbarea acestui filtru necesită o nouă previzualizare.',
+    'filterDetails' => 'Potrivirea numelui de utilizator urmează colaționarea bazei de date de contabilizare; căutarea cu metacaractere nu este acceptată.',
+    'preview' => 'Previzualizează înregistrările potrivite',
+    'previewTitle' => 'Previzualizare',
+    'previewDetails' => 'Detalii previzualizare',
+    'count' => '%d înregistrări potrivite la momentul numărării; %d înregistrări în această previzualizare. Maximum %d pentru fiecare operațiune, ordonate după ID-ul contabil. Numai înregistrările afișate pot fi modificate. Repetă previzualizarea pentru un alt lot; numărul se poate schimba în timpul actualizărilor contabile.',
+    'concurrency' => 'Confirmarea expiră după 10 minute și poate fi utilizată o singură dată. Înregistrările modificate de actualizări Interim/Stop sau care nu mai sunt eligibile sunt omise. Înregistrările care corespund ulterior nu sunt niciodată adăugate la această operațiune.',
+    'id' => 'ID contabil',
+    'nas' => 'Adresă NAS',
+    'start' => 'Începutul sesiunii',
+    'activity' => 'Ora actualizării înregistrate',
+    'seconds' => 'Secunde înregistrate',
+    'input' => 'Octeți de intrare înregistrați',
+    'output' => 'Octeți de ieșire înregistrați',
+    'activityHelp' => 'Ora actualizării este afișată numai dacă schema de contabilizare furnizează acctupdatetime. Valorile lipsă sunt afișate ca o liniuță. Aceste valori din baza de date nu dovedesc inactivitatea sau conectivitatea NAS-ului.',
+    'closeSelectionOne' => '%d sesiune selectată',
+    'closeSelectionMany' => '%d sesiuni selectate',
+    'deleteSelectionOne' => '%d înregistrare selectată',
+    'deleteSelectionMany' => '%d înregistrări selectate',
+    'closeConfirmOne' => 'Închide %d sesiune',
+    'closeConfirmMany' => 'Închide %d sesiuni',
+    'deleteConfirmOne' => 'Șterge definitiv %d înregistrare',
+    'deleteConfirmMany' => 'Șterge definitiv %d înregistrări',
+    'empty' => 'Nu există înregistrări deschise potrivite. Nu s-a modificat nimic.',
+    'result' => '%s: %d efectiv afectate, %d înregistrări modificate sau devenite neeligibile omise, %d eșuate. Previzualizează din nou înainte de orice operațiune ulterioară.',
+    'invalid' => 'Solicitarea, filtrul, tokenul CSRF sau confirmarea expirată nu sunt valide. Nu s-a modificat nimic. Creează o nouă previzualizare.',
+    'error' => 'Înregistrările contabile nu pot fi citite. Nu s-a efectuat nicio operațiune.',
+];
 
 $l['button']['Listusers'] =" Lista utilizatorilor ";
 $l['button']['NewUser'] = "utilizator nou";
@@ -681,7 +729,6 @@ $l['title']['VendorAttribute'] = "Vendor atribut";
 $l['title']['AccountRemoval'] = "Contul de eliminare";
 $l['title']['AccountInfo'] = "Informa?ii despre cont";
 
-$l['title']['Profile'] = "Profiluri";
 $l['title']['ProfileInfo'] = "Profil Info";
 
 $l['title']['GroupInfo'] = "informa?ii despre grup";
@@ -865,14 +912,12 @@ $l['Intro']['replogssystem.php'] = "System Logfile";
 $l['Intro']['replogsradius.php'] = "RADIUS server Logfile";
 $l['Intro']['replogsdaloradius.php'] = "daloRADIUS Logfile";
 $l['Intro']['replogsboot.php'] = "boot Logfile";
-$l['Intro']['replogs.php'] = "Rapoarte";
 
 $l['Intro']['rephsall.php'] = "hotspots Listing ";
 $l['Intro']['repmain.php'] = "Rapoarte Page";
 $l['Intro']['repstatus.php'] = "Status Page";
 $l['Intro']['replogs.php'] = "Rapoarte Page";
 $l['Intro']['reptopusers.php'] = "Top Utilizatori";
-$l['Intro']['repusername.php'] = "Utilizatorii Listing";
 
 $l['Intro']['mngbatch.php'] = "Create lot utilizatori";
 $l['Intro']['mngdel.php'] = "?terge utilizator";
@@ -1224,7 +1269,6 @@ $l['helpPage']['repstatus'] = "<b> Stare </ b> <br/>
 <h200> <b> RADIUS Stare </ b> </ h200> - Ofer? informa?ii generale despre FreeRADIUS daemon ?i baze de date MySQL server ";
 $l['helpPage']['reptopusers'] = "Inregistreaza top pentru utilizatori, cei care sunt enumerate mai jos au c??tigat cel mai mare consum de sesiune
 timp sau de utilizare a l??imii de band?. Afi?area utilizatorilor din categoria: ";
-$l['helpPage']['repusername'] = "Recorduri g?sit de utilizator:";
 $l['helpPage']['reponline'] = "
 Urm?torul tabel afi?eaz? utilizatorii care ?n prezent sunt conectate la
 sistem. Este foarte posibil ca acolo sunt surmenat de conexiuni,

@@ -33,6 +33,7 @@ $autocomplete = (isset($configValues['CONFIG_IFACE_AUTO_COMPLETE']) &&
 
 global $username, $invoice_status_id, $user_id, $startdate, $enddate;
 
+
 include('../common/includes/db_open.php');
 
 // get valid users
@@ -81,7 +82,7 @@ $components[] = array(
 $components[] = array(
                         "id" => 'random',
                         "name" => "invoice_status_id",
-                        "caption" => "Invoice Status",
+                        "caption" => t('all', 'InvoiceStatus'),
                         "type" => "select",
                         "options" => $menu_invoice_status_id,
                         "selected_value" => (isset($invoice_status_id)) ? $invoice_status_id : "",
@@ -132,7 +133,7 @@ $components[] = array(
                         "id" => 'random',
                         "name" => "startdate",
                         "type" => "date",
-                        "value" => ((isset($startdate)) ? $startdate : date("Y-m-01")),
+                        "value" => ((!empty($startdate)) ? $startdate : ""),
                         "caption" => t('all','StartingDate'),
                         "tooltipText" => t('Tooltip','Date'),
                         "sidebar" => true
@@ -142,7 +143,7 @@ $components[] = array(
                         "id" => 'random',
                         "name" => "enddate",
                         "type" => "date",
-                        "value" => ((isset($enddate)) ? $enddate : date("Y-m-t")),
+                        "value" => ((!empty($enddate)) ? $enddate : ""),
                         "caption" => t('all','EndingDate'),
                         "tooltipText" => t('Tooltip','Date'),
                         "sidebar" => true
@@ -151,7 +152,7 @@ $components[] = array(
 $components[] = array(
                         "id" => 'random',
                         "name" => "invoice_status_id",
-                        "caption" => "Invoice Status",
+                        "caption" => t('all', 'InvoiceStatus'),
                         "type" => "select",
                         "options" => $menu_invoice_status_id,
                         "selected_value" => (isset($invoice_status_id)) ? $invoice_status_id : "",
@@ -185,11 +186,11 @@ $descriptors2[] = array( 'type' => 'form', 'title' => t('button','GenerateReport
                          'method' => 'GET', 'icon' => 'database-gear', 'form_components' => $components, );
 
 $sections = array();
-$sections[] = array( 'title' => 'Invoice Management', 'descriptors' => $descriptors1 );
-$sections[] = array( 'title' => 'Invoice Report', 'descriptors' => $descriptors2 );
+$sections[] = array( 'title' => t('sidebar', 'InvoiceManagement'), 'descriptors' => $descriptors1 );
+$sections[] = array( 'title' => t('sidebar', 'InvoiceReport'), 'descriptors' => $descriptors2 );
 
 // add sections to menu
 $menu = array(
-                'title' => 'Billing',
+                'title' => t('sidebar', 'Billing'),
                 'sections' => $sections,
              );

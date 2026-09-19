@@ -38,13 +38,27 @@ if (strpos($_SERVER['PHP_SELF'], '/include/management/userBilling.php') !== fals
  * $userId                    the userbillinfo user id or the username (autodetects)
  * $invoiceInfo            array holding the invoice information
  * $invoiceItems           array holding the invoice items information
+ * $db_error_handler       optional error callback for JSON callers (uses the existing DB hook)
  *
  *********************************************************************************************************
  */
-function userInvoiceAdd($userId, $invoiceInfo = array(), $invoiceItems = array()) {
-    global $logDebugSQL;
+function userInvoiceAdd($userId, $invoiceInfo = array(), $invoiceItems = array(), $db_error_handler = null) {
+    global $configValues, $logDebugSQL;
 
-    include('../common/includes/db_open.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_open.php' ]);
+    $dbSocket->setErrorHandling(PEAR_ERROR_RETURN);
+
+    $transaction_started = false;
+    $fail = function() use (&$dbSocket, &$transaction_started) {
+        if (isset($dbSocket) && is_object($dbSocket)) {
+            if ($transaction_started) {
+                $dbSocket->rollback();
+                $transaction_started = false;
+            }
+            $dbSocket->disconnect();
+        }
+        return false;
+    };
 
     $user_id = false;
 
@@ -59,13 +73,20 @@ function userInvoiceAdd($userId, $invoiceInfo = array(), $invoiceItems = array()
         $res = $dbSocket->query($sql);
         $logDebugSQL .= "$sql;\n";
 
+        if (DB::isError($res)) {
+            return $fail();
+        }
+
         $row = $res->fetchRow();
+        if (DB::isError($row) || !is_array($row)) {
+            return $fail();
+        }
         $user_id = $row[0];
     }
 
     // if something is not right with the user id (set to null, false, whatever) we abort
     if (!$user_id) {
-        return false;
+        return $fail();
     }
 
     $currDate = date('Y-m-d H:i:s');
@@ -82,6 +103,11 @@ function userInvoiceAdd($userId, $invoiceInfo = array(), $invoiceItems = array()
     $myinvoiceInfo['notes'] = 'provisioned new user from daloRADIUS platform';
     $invoiceInfo = array_merge($myinvoiceInfo, $invoiceInfo);
 
+    $res = $dbSocket->autoCommit(false);
+    if (DB::isError($res)) {
+        return $fail();
+    }
+    $transaction_started = true;
 
     $sql = "INSERT INTO ".$configValues['CONFIG_DB_TBL_DALOBILLINGINVOICE'].
             " (id, user_id, date, status_id, type_id, notes, creationdate, creationby, updatedate, updateby) ".
@@ -95,15 +121,18 @@ function userInvoiceAdd($userId, $invoiceInfo = array(), $invoiceItems = array()
     $logDebugSQL .= $sql . "\n";
 
     // if there hasn't been any errors with inserting the invoice record
-    if (!PEAR::isError($res)) {
+    if (DB::isError($res)) {
+        return $fail();
+    }
 
-        // get the added invoice id from the database
-        $invoice_id = $dbSocket->getOne( "SELECT LAST_INSERT_ID() FROM `".$configValues['CONFIG_DB_TBL_DALOBILLINGINVOICE']."`" );
+    // get the added invoice id from the database
+    $invoice_id = $dbSocket->getOne( "SELECT LAST_INSERT_ID() FROM `".$configValues['CONFIG_DB_TBL_DALOBILLINGINVOICE']."`" );
 
-        if (!$invoice_id)
-            return false;
+    if (DB::isError($invoice_id) || !$invoice_id) {
+        return $fail();
+    }
 
-        foreach($invoiceItems as $invoiceItem) {
+    foreach($invoiceItems as $invoiceItem) {
             // set default information for the invoice items
             /*
             $myinvoiceItems['plan_id'] = '' ;
@@ -124,16 +153,21 @@ function userInvoiceAdd($userId, $invoiceInfo = array(), $invoiceItems = array()
                 $dbSocket->escapeSimple($invoiceItem['notes'])."', ".
                 " '$currDate', '$currBy', NULL, NULL)";
 
-            $res = $dbSocket->query($sql);
-            $logDebugSQL .= $sql . "\n";
+        $res = $dbSocket->query($sql);
+        $logDebugSQL .= $sql . "\n";
 
+        if (DB::isError($res)) {
+            return $fail();
         }
-
     }
 
+    $res = $dbSocket->commit();
+    if (DB::isError($res)) {
+        return $fail();
+    }
+    $transaction_started = false;
 
-
-    include('../common/includes/db_close.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_close.php' ]);
 
     return true;
 
@@ -191,7 +225,7 @@ function userInvoicesStatus($user_id, $drawTable) {
 
         $button_descriptors0 = array();
         $button_descriptors0[] = array(
-                                            "label" => "New Invoice",
+                                            "label" => t('button','NewInvoice'),
                                             "onclick" => sprintf("javascript:window.location='bill-invoice-new.php?user_id=%d'", $user_id),
                                             "class" => "btn-success",
                                       );
@@ -216,7 +250,7 @@ function userInvoicesStatus($user_id, $drawTable) {
         $input_descriptors0[] = array(
                                         "type" =>"number",
                                         "name" => "total_invoices",
-                                        "caption" => "Total Invoices",
+                                        "caption" => t('all','TotalInvoices'),
                                         "disabled" => true,
                                         "value" => $totalInvoices,
                                      );
@@ -232,7 +266,7 @@ function userInvoicesStatus($user_id, $drawTable) {
         $input_descriptors0[] = array(
                                         "type" =>"number",
                                         "name" => "total_billed",
-                                        "caption" => "Total Billed",
+                                        "caption" => t('all','TotalBilled'),
                                         "disabled" => true,
                                         "value" => $totalBilled,
                                      );
@@ -248,7 +282,7 @@ function userInvoicesStatus($user_id, $drawTable) {
         $input_descriptors0[] = array(
                                         "type" =>"number",
                                         "name" => "balance",
-                                        "caption" => "Balance",
+                                        "caption" => t('all','Balance'),
                                         "disabled" => true,
                                         "value" => $totalPayed - $totalBilled,
                                      );
@@ -416,11 +450,12 @@ function userBillingPayPalSummary($startdate, $enddate, $payer_email, $payment_a
     $sql_WHERE = array();
 
     if (!empty($startdate)) {
-        $sql_WHERE[] = sprintf("payment_date > '%s'", $dbSocket->escapeSimple($startdate));
+        $sql_WHERE[] = sprintf("payment_date >= '%s'", $dbSocket->escapeSimple($startdate));
     }
 
-    if (!empty($startdate)) {
-        $sql_WHERE[] = sprintf("payment_date < '%s'", $dbSocket->escapeSimple($enddate));
+    if (!empty($enddate)) {
+        // inclusive end date: match the whole $enddate day
+        $sql_WHERE[] = sprintf("payment_date < ('%s' + INTERVAL 1 DAY)", $dbSocket->escapeSimple($enddate));
     }
 
     if (!empty($payer_email)) {

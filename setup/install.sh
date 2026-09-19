@@ -477,7 +477,7 @@ freeradius_enable_restart() {
 # Function to install daloRADIUS and required packages
 daloradius_install_dep() {
     echo -n "[+] Installing daloRADIUS dependencies... "
-    apt --no-install-recommends install apache2 php libapache2-mod-php php-mysql php-zip php-mbstring php-common php-curl \
+    apt --no-install-recommends install apache2 php libapache2-mod-php php-mysql php-mbstring php-common php-curl \
                                         php-gd php-db php-mail php-mail-mime freeradius-utils git rsyslog -y >/dev/null 2>&1 &
     print_spinner $!
     wait $!
@@ -672,6 +672,12 @@ apache_setup_operators_site() {
     Require all granted
   </Directory>
 
+  # server-side only: PDF notification templates and helpers, never fetched directly
+  <Directory \${DALORADIUS_ROOT_DIRECTORY}/app/operators/notifications>
+    AllowOverride None
+    Require all denied
+  </Directory>
+
   <Directory \${DALORADIUS_ROOT_DIRECTORY}>
     Require all denied
   </Directory>
@@ -708,6 +714,12 @@ apache_setup_users_site() {
     Options -Indexes +FollowSymLinks
     AllowOverride None
     Require all granted
+  </Directory>
+
+  # server-side only: PDF notification templates and helpers, never fetched directly
+  <Directory \${DALORADIUS_ROOT_DIRECTORY}/app/users/notifications>
+    AllowOverride None
+    Require all denied
   </Directory>
 
   <Directory \${DALORADIUS_ROOT_DIRECTORY}>

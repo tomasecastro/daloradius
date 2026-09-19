@@ -70,17 +70,17 @@
     // whenever possible we use a whitelist approach
     $orderBy = (array_key_exists('orderBy', $_GET) && isset($_GET['orderBy']) &&
                 in_array($_GET['orderBy'], array_keys($param_cols)))
-             ? $_GET['orderBy'] : array_keys($param_cols)[0];
+             ? $_GET['orderBy'] : array_keys($param_cols)[6];
 
     $orderType = (array_key_exists('orderType', $_GET) && isset($_GET['orderType']) &&
                   in_array(strtolower($_GET['orderType']), array( "desc", "asc" )))
-               ? strtolower($_GET['orderType']) : "asc";
+               ? strtolower($_GET['orderType']) : "desc";
 
 
     // print HTML prologue
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/ajaxGeneric.js",
+        "static/js/request.js",
+        "static/js/readonly_info.js",
     );
 
     $title = t('Intro','mngradippoollist.php');
@@ -218,7 +218,7 @@
                 ];
                 $tooltip2 = get_tooltip_list_str($tooltip2);
             } else {
-                $tooltip2 = (!empty($framedipaddress)) ? $framedipaddress : "(n/a)";
+                $tooltip2 = (!empty($framedipaddress)) ? $framedipaddress : t('all','NotAvailable');
             }
 
             // NAS IP accounting tooltip
@@ -233,7 +233,7 @@
                 ];
                 $tooltip3 = get_tooltip_list_str($tooltip3);
             } else {
-                $tooltip3 = (!empty($nasipaddress)) ? $nasipaddress : "(n/a)";
+                $tooltip3 = (!empty($nasipaddress)) ? $nasipaddress : t('all','NotAvailable');
             }
 
             // username tooltip
@@ -241,7 +241,7 @@
                 $ajax_id = sprintf("divContainerUserInfo_%d", $count);
                 $param = sprintf("username=%s", urlencode($username));
                 $onclick = sprintf(
-                    "ajaxGeneric('library/ajax/user_info.php','retBandwidthInfo','%s','%s')",
+                    "daloInfo.user('%s','%s')",
                     $ajax_id, $param
                 );
                 $tooltip4 = [
@@ -264,7 +264,7 @@
                 }
                 $tooltip4 = get_tooltip_list_str($tooltip4);
             } else {
-                $tooltip4 = "(n/a)";
+                $tooltip4 = t('all','NotAvailable');
             }
 
             // expiry time badge
@@ -273,7 +273,7 @@
                 $badge_class = $is_future ? "text-bg-success" : "text-bg-danger";
                 $badge1 = sprintf('<span class="badge %s">%s</span>', $badge_class, $expiry_time);
             } else {
-                $badge1 = "(n/a)";
+                $badge1 = t('all','NotAvailable');
             }
 
             // build table row
@@ -282,11 +282,11 @@
                 $tooltip1,
                 $tooltip2,
                 $tooltip3,
-                (!empty($calledstationid)) ? $calledstationid : "(n/a)",
-                (!empty($callingstationid)) ? $callingstationid : "(n/a)",
+                (!empty($calledstationid)) ? $calledstationid : t('all','NotAvailable'),
+                (!empty($callingstationid)) ? $callingstationid : t('all','NotAvailable'),
                 $badge1,
                 $tooltip4,
-                (!empty($pool_key)) ? $pool_key : "(n/a)",
+                (!empty($pool_key)) ? $pool_key : t('all','NotAvailable'),
             );
 
             // print table row

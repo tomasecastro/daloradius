@@ -19,7 +19,7 @@
  *                 RADIUS users, NAS devices, and hotspots. It generates cards for each statistic,
  *                 fetches recent connection attempts and online users
  *                 and presents the data in formatted tables.
- * 
+ *
  * Authors:        Liran Tal <liran@lirantal.com>
  *                 Filippo Lauria <filippo.lauria@iit.cnr.it>
  *
@@ -73,7 +73,7 @@
     function print_dashboard_table_head($headers) {
         echo '<div class="table-responsive dashboard-table-wrapper mb-3">';
         echo '<table class="table table-hover table-striped dashboard-table"><tr>';
-        
+
         foreach ($headers as $header) {
             printf('<th>%s</th>', $header);
         }
@@ -122,18 +122,18 @@
         </div>
     </div>
 </div>
-   
+
 HTML;
-     
+
     }
-    
+
     // Define card parameters
 
     $card_params = [
         [
             "title" => t('submenu', 'Users'),
             "total" => sprintf("%s: <strong>%d</strong>", t('all', 'Total'), $total_users),
-            "linkText" => "Go to users list",
+            "linkText" => t('dashboard', 'GoToUsersList'),
             "linkURL" => "mng-list-all.php",
             "bgColor" => "success",
             "icon" => "people-fill"
@@ -141,7 +141,7 @@ HTML;
         [
             "title" => t('submenu', 'Nas'),
             "total" => sprintf("%s: <strong>%d</strong>", t('all', 'Total'), $total_nas),
-            "linkText" => "Go to NAS list",
+            "linkText" => t('dashboard', 'GoToNASList'),
             "linkURL" => "mng-rad-nas-list.php",
             "bgColor" => "danger",
             "icon" => "router-fill"
@@ -149,7 +149,7 @@ HTML;
         [
             "title" => t('submenu', 'Hotspots'),
             "total" => sprintf("%s: <strong>%d</strong>", t('all', 'Total'), $total_hotspots),
-            "linkText" => "Go to hotspots list",
+            "linkText" => t('dashboard', 'GoToHotspotsList'),
             "linkURL" => "mng-hs-list.php",
             "bgColor" => "primary",
             "icon" => "wifi"
@@ -158,7 +158,7 @@ HTML;
 
     $version = t('all', 'daloRADIUS');
     $copyright = strip_tags(t('all', 'copyright2'));
-    
+
     echo <<<HTML
 <span class="d-flex align-items-center justify-content-start mb-2">
     <h1 class="fs-4 m-0">daloRADIUS</h1>
@@ -168,7 +168,7 @@ HTML;
 </span>
 
 HTML;
-    
+
     // Print cards using parameters
     echo '<div class="row mb-4">';
     foreach ($card_params as $params) {
@@ -194,23 +194,34 @@ HTML;
     if ($numrows > 0) {
         $headers = array(t('all', 'Username'), t('all', 'RADIUSReply'), t('all', 'Date'));
         print_dashboard_table_head($headers);
-        
+
         while ($row = $res->fetchRow()) {
             // Apply htmlspecialchars to each element of the row
             list($user, $reply, $datetime) = array_map(function($value) {
                 return htmlspecialchars(trim($value), ENT_QUOTES, 'UTF-8');
             }, $row);
 
-            $reply = sprintf('<span class="text-%s">%s</span>',
-                            (($reply == "Access-Reject") ? "danger" : "success"), $reply);
+            // datetime
+            $datetime = !empty($datetime) ? date('Y-m-d H:i:s', strtotime($datetime)) : t('all','NotAvailable');
+
+            // reply
+            $is_rejected = $reply === 'Access-Reject';
+
+            $badge_class = $is_rejected ? 'text-bg-danger' : 'text-bg-success';
+            $icon = $is_rejected ? 'x-circle-fill' : 'check-circle-fill';
+
+            $reply = sprintf(
+                '<span class="badge %s"><i class="bi bi-%s me-1"></i>%s</span>',
+                $badge_class, $icon, $reply
+            );
 
             print_dashboard_table_row(array($user, $reply, $datetime));
         }
 
         print_dashboard_table_bottom();
-    
+
     } else {
-        print_dashboard_info_message('no data to show');
+        print_dashboard_info_message(t('messages', 'noDataToShow'));
     }
 
     echo '</div>';
@@ -222,24 +233,24 @@ HTML;
     $numrows = $res->numRows();
 
     echo '<div class="col-12 col-xl-6 m-0 px-3">';
-    print_title('Currently online', "rep-online.php?orderBy=acctstarttime&orderType=desc", "bi-box-arrow-up-right");
+    print_title(t('dashboard', 'CurrentlyOnline'), "rep-online.php?orderBy=acctstarttime&orderType=desc", "bi-box-arrow-up-right");
 
     if ($numrows > 0) {
-        print_dashboard_table_head(array(t('all', 'Username'), 'Online since'));
-        
+        print_dashboard_table_head(array(t('all', 'Username'), t('dashboard', 'OnlineSince')));
+
         while ($row = $res->fetchRow()) {
             // Apply htmlspecialchars to each element of the row
             $row = array_map(function($value) {
                 return htmlspecialchars(trim($value), ENT_QUOTES, 'UTF-8');
             }, $row);
-            
+
             print_dashboard_table_row($row);
         }
 
         print_dashboard_table_bottom();
-    
+
     } else {
-        print_dashboard_info_message('no data to show');
+        print_dashboard_info_message(t('messages', 'noDataToShow'));
     }
 
     echo <<<HTML
@@ -248,25 +259,25 @@ HTML;
     <div class="row">
 HTML;
 
-    $sql = sprintf("SELECT DISTINCT(ra.username) AS `username`, 
+    $sql = sprintf("SELECT DISTINCT(ra.username) AS `username`,
                     SUM(ra.AcctSessionTime) AS `session_time`,
-                    SUM(ra.AcctInputOctets) AS `uploaded_bytes`, 
+                    SUM(ra.AcctInputOctets) AS `uploaded_bytes`,
                     SUM(ra.AcctOutputOctets) AS `downloaded_bytes`
-                    FROM %s AS ra 
-                    WHERE ra.acctstarttime >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) 
-                    GROUP BY `username` 
-                    ORDER BY `session_time` DESC 
+                    FROM %s AS ra
+                    WHERE ra.acctstarttime >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                    GROUP BY `username`
+                    ORDER BY `session_time` DESC
                     LIMIT 10", $configValues['CONFIG_DB_TBL_RADACCT']);
     $res = $dbSocket->query($sql);
     $numrows = $res->numRows();
 
-    
+
     // Today's date
     $today = date("Y-m-d");
     // Date one month ago
     $one_month_ago = date("Y-m-d", strtotime("-1 month"));
     $href = sprintf('rep-topusers.php?startdate=%s&enddate=%s&orderBy=Time&orderType=desc', $one_month_ago, $today);
-    $title = "Last month top users";
+    $title = t('dashboard', 'LastMonthTopUsers');
 
     echo '<div class="col-12 m-0 px-3">';
     print_title($title, $href, 'bi-box-arrow-up-right');
@@ -287,9 +298,9 @@ HTML;
         }
 
         print_dashboard_table_bottom();
-    
+
     } else {
-        print_dashboard_info_message('no data to show');
+        print_dashboard_info_message(t('messages', 'noDataToShow'));
     }
 
     echo '</div>';

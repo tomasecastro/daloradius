@@ -185,14 +185,24 @@
             $notes = (array_key_exists('notes', $_POST) && isset($_POST['notes'])) ? $_POST['notes'] : "";
 
             // first we check user portal login password
-            $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) && !empty(trim($_POST['portalLoginPassword'])))
+            $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) &&
+                                       dalo_portal_password_is_acceptable($_POST['portalLoginPassword']))
                                     ? trim($_POST['portalLoginPassword']) : "";
 
-            // these are forced to 0 (disabled) if user portal login password is empty
-            $ui_changeuserinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
+            $ui_hasPortalLoginPassword = user_portal_password_is_set($dbSocket, $username);
+            $portal_password_available = $ui_hasPortalLoginPassword
+                                      || dalo_portal_password_is_present($ui_PortalLoginPassword);
+            $portal_access_valid = dalo_portal_access_is_valid($_POST, $ui_hasPortalLoginPassword);
+
+            $ui_changeuserinfo = ($portal_password_available && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
                                ? '1' : '0';
-            $ui_enableUserPortalLogin = (!empty($ui_PortalLoginPassword) &&  isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
+            $ui_enableUserPortalLogin = ($portal_password_available && isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
                                       ? '1' : '0';
+
+            if (!$portal_access_valid) {
+                $failureMsg = 'A portal password is required before portal access can be enabled.';
+                $logAction .= "Failed updating user because portal access requires a password on page: ";
+            }
 
             $groups = (isset($_POST['groups']) && is_array($_POST['groups'])) ? $_POST['groups'] : array();
 
@@ -214,8 +224,7 @@
             $bi_creditcardexp = (array_key_exists('bi_creditcardexp', $_POST) && isset($_POST['bi_creditcardexp'])) ? $_POST['bi_creditcardexp'] : "";
             $bi_notes = (array_key_exists('bi_notes', $_POST) && isset($_POST['bi_notes'])) ? $_POST['bi_notes'] : "";
 
-            // this is forced to 0 (disabled) if user portal login password is empty
-            $bi_changeuserbillinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
+            $bi_changeuserbillinfo = ($portal_password_available && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
                                    ? '1' : '0';
 
             $bi_lead = (array_key_exists('bi_lead', $_POST) && isset($_POST['bi_lead'])) ? $_POST['bi_lead'] : "";
@@ -230,59 +239,38 @@
             $bi_faxinvoice = (array_key_exists('bi_faxinvoice', $_POST) && isset($_POST['bi_faxinvoice'])) ? $_POST['bi_faxinvoice'] : "";
             $bi_emailinvoice = (array_key_exists('bi_emailinvoice', $_POST) && isset($_POST['bi_emailinvoice'])) ? $_POST['bi_emailinvoice'] : "";
 
-            if (!empty($username)) {
+            if (!empty($username) && $portal_access_valid) {
 
-                // insert userinfo
-                $sql = sprintf("SELECT COUNT(DISTINCT(username)) FROM %s WHERE username='%s'",
-                               $configValues['CONFIG_DB_TBL_DALOUSERINFO'], $dbSocket->escapeSimple($username));
-                $res = $dbSocket->query($sql);
-                $userinfoExist = intval($res->fetchrow()[0]) > 0;
-                $logDebugSQL .= "$sql;\n";
+                $userinfoExist = user_exists($dbSocket, $username, 'CONFIG_DB_TBL_DALOUSERINFO');
+                $params = array(
+                    'firstname' => $firstname,
+                    'lastname' => $lastname,
+                    'email' => $email,
+                    'department' => $department,
+                    'company' => $company,
+                    'workphone' => $workphone,
+                    'homephone' => $homephone,
+                    'mobilephone' => $mobilephone,
+                    'address' => $address,
+                    'city' => $city,
+                    'state' => $state,
+                    'country' => $country,
+                    'zip' => $zip,
+                    'notes' => $notes,
+                    'changeuserinfo' => $ui_changeuserinfo,
+                    'portalloginpassword' => $ui_PortalLoginPassword,
+                    'enableportallogin' => $ui_enableUserPortalLogin,
+                );
 
-                // if there were no records for this user present in the userinfo table
-                if (!$userinfoExist) {
-                    // insert user information table
-                    $sql = sprintf("INSERT INTO %s (id, username, firstname, lastname, email, department, company,
-                                                    workphone, homephone,  mobilephone, address, city, state, country,
-                                                    zip, notes, changeuserinfo, portalloginpassword, enableportallogin,
-                                                    creationdate, creationby, updatedate, updateby)
-                                            VALUES (0, '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',
-                                                    '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s', '%s',
-                                                    '%s', NULL, NULL)", $configValues['CONFIG_DB_TBL_DALOUSERINFO'],
-                                                                        $dbSocket->escapeSimple($username), $dbSocket->escapeSimple($firstname),
-                                                                        $dbSocket->escapeSimple($lastname), $dbSocket->escapeSimple($email),
-                                                                        $dbSocket->escapeSimple($department), $dbSocket->escapeSimple($company),
-                                                                        $dbSocket->escapeSimple($workphone), $dbSocket->escapeSimple($homephone),
-                                                                        $dbSocket->escapeSimple($mobilephone), $dbSocket->escapeSimple($address),
-                                                                        $dbSocket->escapeSimple($city), $dbSocket->escapeSimple($state),
-                                                                        $dbSocket->escapeSimple($country), $dbSocket->escapeSimple($zip),
-                                                                        $dbSocket->escapeSimple($notes), $dbSocket->escapeSimple($ui_changeuserinfo),
-                                                                        $dbSocket->escapeSimple($ui_PortalLoginPassword),
-                                                                        $dbSocket->escapeSimple($ui_enableUserPortalLogin),
-                                                                        $dbSocket->escapeSimple($current_datetime), $dbSocket->escapeSimple($currBy));
+                if ($userinfoExist) {
+                    $params['updatedate'] = $current_datetime;
+                    $params['updateby'] = $currBy;
+                    update_user_info($dbSocket, $username, $params);
                 } else {
-                   // update user information table
-                   $sql = sprintf("UPDATE %s SET firstname='%s', lastname='%s', email='%s', department='%s', company='%s', workphone='%s',
-                                                 homephone='%s', mobilephone='%s', address='%s', city='%s', state='%s', country='%s',
-                                                 zip='%s', notes='%s', changeuserinfo='%s', portalloginpassword='%s', enableportallogin='%s',
-                                                 updatedate='%s', updateby='%s'
-                                    WHERE username='%s'", $configValues['CONFIG_DB_TBL_DALOUSERINFO'], $dbSocket->escapeSimple($firstname),
-                                                          $dbSocket->escapeSimple($lastname), $dbSocket->escapeSimple($email),
-                                                          $dbSocket->escapeSimple($department), $dbSocket->escapeSimple($company),
-                                                          $dbSocket->escapeSimple($workphone), $dbSocket->escapeSimple($homephone),
-                                                          $dbSocket->escapeSimple($mobilephone), $dbSocket->escapeSimple($address),
-                                                          $dbSocket->escapeSimple($city), $dbSocket->escapeSimple($state),
-                                                          $dbSocket->escapeSimple($country), $dbSocket->escapeSimple($zip),
-                                                          $dbSocket->escapeSimple($notes), $dbSocket->escapeSimple($ui_changeuserinfo),
-                                                          $dbSocket->escapeSimple($ui_PortalLoginPassword),
-                                                          $dbSocket->escapeSimple($ui_enableUserPortalLogin),
-                                                          $dbSocket->escapeSimple($current_datetime), $dbSocket->escapeSimple($currBy),
-                                                          $dbSocket->escapeSimple($username));
+                    $params['creationdate'] = $current_datetime;
+                    $params['creationby'] = $currBy;
+                    add_user_info($dbSocket, $username, $params);
                 }
-
-                // execute the insert/update onto userinfo
-                $res = $dbSocket->query($sql);
-                $logDebugSQL .= "$sql;\n";
 
 
                 /* perform user billing info table instructions */
@@ -386,7 +374,9 @@
 
         /* fill-in all the user info details */
         $sql = sprintf("SELECT firstname, lastname, email, department, company, workphone, homephone, mobilephone, address, city,
-                               state, country, zip, notes, changeuserinfo, portalloginpassword, enableportallogin, creationdate,
+                               state, country, zip, notes, changeuserinfo,
+                               (portalloginpassword IS NOT NULL AND portalloginpassword<>'') AS has_portal_password,
+                               enableportallogin, creationdate,
                                creationby, updatedate, updateby
                           FROM %s WHERE username='%s'", $configValues['CONFIG_DB_TBL_DALOUSERINFO'],
                                                         $dbSocket->escapeSimple($username));
@@ -396,7 +386,7 @@
         list(
               $ui_firstname, $ui_lastname, $ui_email, $ui_department, $ui_company, $ui_workphone, $ui_homephone,
               $ui_mobilephone, $ui_address, $ui_city, $ui_state, $ui_country, $ui_zip, $ui_notes, $ui_changeuserinfo,
-              $ui_PortalLoginPassword, $ui_enableUserPortalLogin, $ui_creationdate, $ui_creationby, $ui_updatedate,
+              $ui_hasPortalLoginPassword, $ui_enableUserPortalLogin, $ui_creationdate, $ui_creationby, $ui_updatedate,
               $ui_updateby
             ) = $res->fetchRow();
 
@@ -423,34 +413,38 @@
 
 
         // inline extra javascript
-        $inline_extra_js = sprintf("var strUsername = 'username=%s';\n", $username_enc);
+        $inline_extra_js = sprintf("var actionUsername = %s;\n", json_encode($username, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT));
 
         $inline_extra_js .= '
 function disableUser() {
+    if (userActionPending) return false;
     if (confirm("You are about to disable this user account\nDo you want to continue?"))  {
-        ajaxGeneric("library/ajax/user_actions.php", "userDisable=true", "returnMessages", strUsername);
+        userAction("userDisable", [actionUsername]);
         return true;
     }
 }
 
 function enableUser() {
+    if (userActionPending) return false;
     if (confirm("You are about to enable this user account\nDo you want to continue?"))  {
-        ajaxGeneric("library/ajax/user_actions.php", "userEnable=true", "returnMessages", strUsername);
+        userAction("userEnable", [actionUsername]);
         return true;
     }
 }
 
 function refillSessionTime() {
+    if (userActionPending) return false;
     if (confirm("You are about to refill session time for this user account\nDo you want to continue?\n\nSuch action will also bill the user if set so in the plant the user is associated with!"))  {
-        ajaxGeneric("library/ajax/user_actions.php", "refillSessionTime=true", "returnMessages", strUsername);
+        userAction("refillSessionTime", [actionUsername]);
         return true;
     }
 }
 
 
 function refillSessionTraffic() {
+    if (userActionPending) return false;
     if (confirm("You are about to refill session traffic for this user account\nDo you want to continue?\n\nSuch action will also bill the user if set so in the plant the user is associated with!"))  {
-        ajaxGeneric("library/ajax/user_actions.php", "refillSessionTraffic=true", "returnMessages", strUsername);
+        userAction("refillSessionTraffic", [actionUsername]);
         return true;
     }
 }
@@ -466,10 +460,7 @@ function refillSessionTraffic() {
     $extra_css = array();
 
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/ajaxGeneric.js",
         "static/js/productive_funcs.js",
-        "static/js/dynamic_attributes.js",
         "static/js/pages_common.js",
     );
 
@@ -700,7 +691,7 @@ EOF;
 
 window.onload = function() {
     setupAccordion();
-    ajaxGeneric("library/ajax/user_actions.php", "checkDisabled=true", "returnMessages", strUsername);
+    userAction("checkDisabled", [actionUsername]);
 };
 
 EOF;

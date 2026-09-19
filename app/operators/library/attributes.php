@@ -30,6 +30,10 @@ function is_group($user_or_group) {
     return strtolower(trim($user_or_group)) === 'group';
 }
 
+// dalo_cleartext_password_attributes() and dalo_cleartext_password_allowed()
+// live in common/includes/validation.php, which every caller of this file
+// includes beforehand.
+
 function is_passwordlike_attribute($attribute) {
     return preg_match("/-Password$/", $attribute) === 1;
 }
@@ -51,7 +55,10 @@ function hashPasswordAttribute($attribute, $value) {
 
     switch ($attribute) {
         case "Crypt-Password":
-            return crypt($value, 'SALT_DALORADIUS');
+            // crypt() picks the algorithm from the salt prefix. A salt that does not
+            // start with $ selects traditional DES: 8-character truncation and, here,
+            // a salt shared by every user. Use SHA-512 crypt with a per-user salt.
+            return crypt($value, '$6$' . bin2hex(random_bytes(8)) . '$');
 
         case "MD5-Password":
             return strtoupper(md5($value));
@@ -66,8 +73,7 @@ function hashPasswordAttribute($attribute, $value) {
             return strtoupper(bin2hex(mhash(MHASH_MD4, iconv('UTF-8', 'UTF-16LE', $value))));
 
         default:
-        // TODO
-        //~ case "CHAP-Password":
+        // TODO: Add support for CHAP-Password.
         case "User-Password":
         case "Cleartext-Password":
             return $value;
@@ -203,6 +209,11 @@ function handleAttributes($dbSocket, $subject, $skipList, $insert_only=true, $us
         // we have to prepare the "value".
         // we distinguish between password and non-password attributes
         if (is_passwordlike_attribute($attribute)) {
+            if (!dalo_cleartext_password_allowed() &&
+                in_array($attribute, dalo_cleartext_password_attributes(), true)) {
+                continue;
+            }
+
             // before we proceed we need to understand if the password should be updated or skipped
 
             if (!$insert_only) {

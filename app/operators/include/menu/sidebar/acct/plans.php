@@ -32,6 +32,7 @@ $autocomplete = (isset($configValues['CONFIG_IFACE_AUTO_COMPLETE']) &&
 
 global $username, $startdate, $enddate, $planname;
 
+
 include_once("include/management/populate_selectbox.php");
 $menu_plannames = get_plans();
 array_unshift($menu_plannames, "");
@@ -71,7 +72,7 @@ $components[] = array(
                         "id" => 'random',
                         "name" => "startdate",
                         "type" => "date",
-                        "value" => ((isset($startdate)) ? $startdate : date("Y-m-01")),
+                        "value" => ((!empty($startdate)) ? $startdate : ""),
                         "caption" => t('all','StartingDate'),
                         "tooltipText" => t('Tooltip','Date'),
                      );
@@ -81,7 +82,7 @@ $components[] = array(
                         "id" => 'random',
                         "name" => "enddate",
                         "type" => "date",
-                        "value" => ((isset($enddate)) ? $enddate : date("Y-m-t")),
+                        "value" => ((!empty($enddate)) ? $enddate : ""),
                         "caption" => t('all','EndingDate'),
                         "tooltipText" => t('Tooltip','Date'),
                      );
@@ -103,11 +104,11 @@ $descriptors1[] = array( 'type' => 'form', 'title' => t('button','PlanUsage'), '
 
 
 $sections = array();
-$sections[] = array( 'title' => 'Plan Accounting', 'descriptors' => $descriptors1 );
+$sections[] = array( 'title' => t('sidebar', 'PlanAccounting'), 'descriptors' => $descriptors1 );
 
 
 // add sections to menu
 $menu = array(
-                'title' => 'Accounting',
+                'title' => t('sidebar', 'Accounting'),
                 'sections' => $sections,
              );

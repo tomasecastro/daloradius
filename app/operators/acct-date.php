@@ -36,15 +36,17 @@
               ? str_replace("%", "", trim($_GET['username'])) : "";
     $username_enc = (!empty($username)) ? htmlspecialchars($username, ENT_QUOTES, 'UTF-8') : "";
 
+    $date_default = date_range_default('current_month');
+
     $startdate = (array_key_exists('startdate', $_GET) && !empty(trim($_GET['startdate'])) &&
                   preg_match(DATE_REGEX, trim($_GET['startdate']), $m) !== false &&
                   checkdate($m[2], $m[3], $m[1]))
-               ? trim($_GET['startdate']) : "";
+               ? trim($_GET['startdate']) : $date_default['start'];
 
     $enddate = (array_key_exists('enddate', $_GET) && !empty(trim($_GET['enddate'])) &&
                 preg_match(DATE_REGEX, trim($_GET['enddate']), $m) !== false &&
                 checkdate($m[2], $m[3], $m[1]))
-             ? trim($_GET['enddate']) : "";
+             ? trim($_GET['enddate']) : $date_default['end'];
 
     $cols = array(
                 "radacctid" => t('all','ID'),
@@ -78,8 +80,8 @@
 
     // print HTML prologue
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/ajaxGeneric.js",
+        "static/js/request.js",
+        "static/js/readonly_info.js",
         "static/js/pages_common.js",
     );
 
@@ -98,12 +100,13 @@
     $partial_query_params = array();
 
     if (!empty($startdate)) {
-        $sql_WHERE[] = sprintf("AcctStartTime > '%s'", $dbSocket->escapeSimple($startdate));
+        $sql_WHERE[] = sprintf("AcctStartTime >= '%s'", $dbSocket->escapeSimple($startdate));
         $partial_query_params[] = sprintf("startdate=%s", $startdate);
     }
 
     if (!empty($enddate)) {
-        $sql_WHERE[] = sprintf("AcctStartTime < '%s'", $dbSocket->escapeSimple($enddate));
+        // inclusive end date: match the whole $enddate day
+        $sql_WHERE[] = sprintf("AcctStartTime < ('%s' + INTERVAL 1 DAY)", $dbSocket->escapeSimple($enddate));
         $partial_query_params[] = sprintf("enddate=%s", $enddate);
     }
 
@@ -168,11 +171,7 @@
 
 
             $descriptors['end'] = array();
-            $descriptors['end'][] = array(
-                                            'onclick' => "location.href='include/management/fileExport.php?reportFormat=csv'",
-                                            'label' => 'CSV Export',
-                                            'class' => 'btn-light',
-                                         );
+            $descriptors['end'][] = get_csv_export_control();
             print_table_prologue($descriptors);
 
             // print table top
@@ -204,7 +203,7 @@
                 if (hotspots_exists($dbSocket, $hotspot)) {
                     $ajax_id = "divContainerHotspotInfo_" . $count;
                     $param = sprintf('hotspot=%s', urlencode($hotspot));
-                    $onclick = "ajaxGeneric('library/ajax/hotspot_info.php','retHotspotGeneralStat','$ajax_id','$param')";
+                    $onclick = "daloInfo.hotspot('$ajax_id','$param')";
     
                     $tooltip1 = [
                                     'subject' => $hotspot,
@@ -225,7 +224,7 @@
                 if (!empty($username)) {
                     $ajax_id = "divContainerUserInfo_" . $count;
                     $param = sprintf('username=%s', urlencode($username));
-                    $onclick = "ajaxGeneric('library/ajax/user_info.php','retBandwidthInfo','$ajax_id','$param')";
+                    $onclick = "daloInfo.user('$ajax_id','$param')";
                 
                     $tooltip2 = [
                                     'subject' => $username,

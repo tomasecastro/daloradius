@@ -75,8 +75,8 @@
     
     // print HTML prologue
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/ajaxGeneric.js",
+        "static/js/request.js",
+        "static/js/readonly_info.js",
     );
     
     $title = t('Intro','acctipaddress.php');
@@ -147,11 +147,7 @@
         $descriptors['center'] = array( 'draw' => $drawNumberLinks, 'params' => $params );
 
         $descriptors['end'] = array();
-        $descriptors['end'][] = array(
-                                        'onclick' => "location.href='include/management/fileExport.php?reportFormat=csv'",
-                                        'label' => 'CSV Export',
-                                        'class' => 'btn-light',
-                                     );
+        $descriptors['end'][] = get_csv_export_control();
         print_table_prologue($descriptors);
 
         // print table top
@@ -183,7 +179,7 @@
             if (hotspots_exists($dbSocket, $hotspot)) {
                 $ajax_id = "divContainerHotspotInfo_" . $count;
                 $param = sprintf('hotspot=%s', urlencode($hotspot));
-                $onclick = "ajaxGeneric('library/ajax/hotspot_info.php','retHotspotGeneralStat','$ajax_id','$param')";
+                $onclick = "daloInfo.hotspot('$ajax_id','$param')";
 
                 $tooltip1 = [
                                 'subject' => $hotspot,
@@ -204,7 +200,7 @@
             if (!empty($username)) {
                 $ajax_id = "divContainerUserInfo_" . $count;
                 $param = sprintf('username=%s', urlencode($username));
-                $onclick = "ajaxGeneric('library/ajax/user_info.php','retBandwidthInfo','$ajax_id','$param')";
+                $onclick = "daloInfo.user('$ajax_id','$param')";
             
                 $tooltip2 = [
                                 'subject' => $username,

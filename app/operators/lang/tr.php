@@ -68,9 +68,6 @@ $l['all']['RADIUSDictionaryPath'] = "RADIUS Dictionary Path";
 
 
 $l['all']['DashboardSecretKey'] = "Kontrol Paneli Gizli Anahtarı";
-$l['all']['DashboardDebug'] = "Debug";
-$l['all']['DashboardDelaySoft'] = "Time in minutes to consider a 'soft' delay limit";
-$l['all']['DashboardDelayHard'] = "Time in minutes to consider a 'hard' delay limit";
 $l['all']['DashboardDebug'] = "Hata Ayıklama";
 $l['all']['DashboardDelaySoft'] = "'soft' bir gecikme limitini dikkate almak için dakika cinsinden süre";
 $l['all']['DashboardDelayHard'] = "'hard' bir gecikme limitini dikkate almak için dakika cinsinden süre";
@@ -233,7 +230,6 @@ $l['all']['ActiveUsers'] = "Aktif Kullanıcılar";
 $l['all']['TotalBilled'] = "Toplam Faturalanan";
 $l['all']['TotalPayed'] = "Toplam Ödenen";
 $l['all']['Balance'] = "Bakiye";
-$l['all']['CardBank'] = "Kart Bankası";
 $l['all']['Type'] = "Tip";
 $l['all']['CardBank'] = "Kart Bankası";
 $l['all']['MACAddress'] = "MAC Adresi";
@@ -355,7 +351,6 @@ $l['all']['BandwidthDown'] = "Bandwidth Down";
 
 $l['all']['BatchCost'] = "Toplu Maliyet";
 
-$l['all']['PaymentDate'] = "Ödeme Tarihi";
 $l['all']['PaymentStatus'] = "Ödeme Durumu";
 $l['all']['FirstName'] = "Ad";
 $l['all']['LastName'] = "Soyadı";
@@ -724,6 +719,55 @@ $l['button']['HotspotsComparison'] = "Hotspots Comparison";
 
 $l['button']['CleanupStaleSessions'] = "Cleanup Stale Sessions";
 $l['button']['DeleteAccountingRecords'] = "Delete Accounting Records";
+$l['maintenance'] = [
+    'title' => 'Açık oturumların bakımı',
+    'history' => 'Muhasebe geçmişini sil (tüm kayıtlar)',
+    'help' => <<<'HTML'
+    <h2 class="fs-6">Başlamadan önce</h2><p>Açık bir muhasebe kaydı mutlaka geçerliliğini yitirmiş değildir. Bu araç kullanıcı etkinliğini veya NAS bağlantısını kontrol etmez.</p><h2 class="fs-6">İşlemler</h2><ul><li><strong>Oturumları kapat</strong>, kaydedilen kullanımı korur ve seçilen satırları <code>Admin-Reset</code> ile kapatılmış olarak işaretler. Kullanıcıların NAS bağlantısını kesmez.</li><li><strong>Kayıtları sil</strong>, seçilen açık satırları ve kullanım verilerini kalıcı olarak kaldırır.</li></ul><h2 class="fs-6">Kapsam ve onay</h2><p>Kullanıcı adı eşleştirmesi, veritabanı kolasyonuna göre tam eşleşir. Bir tarih, muhasebe veritabanı/sunucu saat diliminde o tarihin 00:00:00 anından kesin olarak önce başlatılan oturumlarla eşleşir.</p><p>Her işlemi onaylamadan önce önizleyin. Önizleme en fazla 100 satır içerir, 10 dakika sonra sona erer ve bir kez kullanılabilir. Değiştirilmiş veya artık uygun olmayan satırlar atlanır.</p>
+    HTML,
+    'close' => 'Oturumları kapat',
+    'delete' => 'Kayıtları sil',
+    'details' => 'Ayrıntılar',
+    'openWarning' => 'Açık oturumlar hâlâ etkin olabilir.',
+    'openHelp' => 'Yalnızca durdurma zamanı eksik olan veya eski sıfır durdurma zamanına sahip kayıtlar uygundur. Etkinlik dışı algılaması yapılmaz.',
+    'dateHelp' => 'Tarih kapsamı, muhasebe veritabanı/sunucu saat dilimindeki 00:00:00 anına göre (tarayıcı saat diliminize göre değil) oturumun seçilen tarihten ÖNCE BAŞLAMASI demektir. Bu, son etkinlik kesme noktası değildir.',
+    'selectTitle' => 'Oturumları seç',
+    'closeSummary' => 'Muhasebe verilerini koru ve seçilen oturumları kapatılmış olarak işaretle.',
+    'deleteSummary' => 'Seçilen açık muhasebe kayıtlarını kalıcı olarak kaldır.',
+    'closeHelp' => 'Kayıtlar, manuel sonlandırma nedeni Admin-Reset ile şimdi kapatılır. Bu, kullanıcıların NAS bağlantısını kesmez. Kaydedilen süre ve trafik sayaçları değiştirilmeden korunur; gelecekteki muhasebe güncellemeleri garanti edilmez.',
+    'deleteHelp' => 'Silme işlemi geri alınamaz. Kaydedilen kullanım kalıcı olarak kaldırılır ve raporlar veya kullanım toplamları değişebilir. Kapatılmış geçmiş bu araç tarafından silinmez.',
+    'scope' => 'Kapsamı seç',
+    'username' => 'Kullanıcı adı',
+    'date' => 'Oturum başlangıcı tarihten önce',
+    'value' => 'Kullanıcı adı veya tarih (YYYY-MM-DD)',
+    'filterHelp' => 'Bu filtreyi değiştirmek yeni bir önizleme gerektirir.',
+    'filterDetails' => 'Kullanıcı adı eşleştirmesi muhasebe veritabanı kolasyonunu izler; joker karakter araması desteklenmez.',
+    'preview' => 'Eşleşen kayıtları önizle',
+    'previewTitle' => 'Önizleme',
+    'previewDetails' => 'Önizleme ayrıntıları',
+    'count' => '%d eşleşen kayıt sayım zamanında; bu önizlemede %d kayıt var. İşlem başına en fazla %d kayıt, muhasebe kimliğine göre sıralanır. Yalnızca görüntülenen kayıtlar değiştirilebilir. Başka bir grup için önizlemeyi tekrarlayın; muhasebe güncellemeleri sırasında sayı değişebilir.',
+    'concurrency' => 'Onay 10 dakika sonra sona erer ve tek kullanımlıktır. Interim/Stop güncellemeleriyle değiştirilen veya artık uygun olmayan kayıtlar atlanır. Yeni eşleşen kayıtlar bu işleme hiçbir zaman eklenmez.',
+    'id' => 'Muhasebe kimliği',
+    'nas' => 'NAS adresi',
+    'start' => 'Oturum başlangıcı',
+    'activity' => 'Kaydedilen güncelleme zamanı',
+    'seconds' => 'Kaydedilen saniyeler',
+    'input' => 'Kaydedilen giriş baytları',
+    'output' => 'Kaydedilen çıkış baytları',
+    'activityHelp' => 'Güncelleme zamanı yalnızca muhasebe şeması acctupdatetime alanını sağlıyorsa gösterilir. Eksik değerler tire olarak gösterilir. Bu veritabanı değerleri etkinlik dışılığını veya NAS bağlantısını kanıtlamaz.',
+    'closeSelectionOne' => '%d oturum seçildi',
+    'closeSelectionMany' => '%d oturum seçildi',
+    'deleteSelectionOne' => '%d kayıt seçildi',
+    'deleteSelectionMany' => '%d kayıt seçildi',
+    'closeConfirmOne' => '%d oturumu kapat',
+    'closeConfirmMany' => '%d oturumu kapat',
+    'deleteConfirmOne' => '%d kaydı kalıcı olarak sil',
+    'deleteConfirmMany' => '%d kaydı kalıcı olarak sil',
+    'empty' => 'Eşleşen açık kayıt yok. Hiçbir şey değiştirilmedi.',
+    'result' => '%s: %d gerçekten etkilendi, %d değiştirilmiş veya uygun olmayan kayıt atlandı, %d başarısız oldu. Başka bir işlem yapmadan önce önizlemeyi yeniden oluşturun.',
+    'invalid' => 'Geçersiz istek, filtre, CSRF belirteci veya süresi dolmuş onay. Hiçbir şey değiştirilmedi. Yeni bir önizleme oluşturun.',
+    'error' => 'Muhasebe kayıtları okunamıyor. Hiçbir işlem gerçekleştirilmedi.',
+];
 
 $l['button']['ListUsers'] = "Kullanıcı Listesi";
 $l['button']['ListBatches'] = "List Batches";
@@ -1014,7 +1058,6 @@ $l['Giriş']['configdashboard.php'] = "Kontrol Paneli Ayarları";
 $l['Giriş']['paymenttypesmain.php'] = "Ödeme Türleri Sayfası";
 $l['Intro']['paymenttypesdel.php'] = "Ödeme Türü Girişini Silin";
 $l['Intro']['paymenttypesedit.php'] = "Ödeme Türü Ayrıntılarını Düzenle";
-$l['Intro']['paymenttypeslist.php'] = "Ödeme Türleri Tablosu";
 $l['Intro']['paymenttypesnew.php'] = "Yeni Ödeme Tipi";
 $l['Intro']['paymenttypeslist.php'] = "Ödeme Türleri Tablosu";
 $l['Giriş']['paymentslist.php'] = "Ödeme Tablosu";
@@ -1131,7 +1174,6 @@ $l['Intro']['rephsall.php'] = "Hotspots Listing";
 $l['Giriş']['repmain.php'] = "Raporlar Sayfası";
 $l['Giriş']['repstatus.php'] = "Durum Sayfası";
 $l['Giriş']['reptopusers.php'] = "En İyi Kullanıcılar";
-$l['Giriş']['repusername.php'] = "Kullanıcı Listesi";
 
 $l['Intro']['mngbatch.php'] = "Create batch users";
 $l['Intro']['mngbatchdel.php'] = "Delete batch sessions";
@@ -1296,7 +1338,6 @@ $l['helpPage']['mngradattributesedit'] = "";
 $l['helpPage']['mngradattributessearch'] = "";
 $l['helpPage']['mngradattributesdel'] = "";
 $l['helpPage']['mngradattributesimport'] = "";
-$l['helpPage']['mngimportusers'] = "";
 
 $l['helpPage']['msgerrorpermissions'] = "You do not have permissions to access the page. <br/>
 Please consult with your System Administrator. <br/>";
@@ -1540,7 +1581,7 @@ $l['helpPage']['graphsoveralllogins'] = "Plots a graphical chart of the Login at
 
 
 $l['helpPage']['rephistory'] = "Lists all activity performed on management items and provides information on <br/>
-Creation Date, Creation By as well as Updated Date and Update By history fields";
+Creation Date, Created By as well as Update Date and Updated By history fields";
 $l['helpPage']['replastconnect'] = "Lists all login attempts to the RADIUS server, both successful and failed logins";
 $l['helpPage']['replogsboot'] = "Monitor Operating System Boot log - equivalent to running the dmesg command.";
 $l['helpPage']['replogsdaloradius'] = "Monitor daloRADIUS's Logfile.";
@@ -1583,7 +1624,6 @@ $l['helpPage']['repstatus'] = "<b>Status</b><br/>
 <h200><b>RADIUS Status</b></h200> - Provides general information about the FreeRADIUS daemon and MySQL Database server";
 $l['helpPage']['reptopusers'] = "Records for top users, those which are listed below have gained the highest consumption of session
 time or bandwidth usage. Listing users of category: ";
-$l['helpPage']['repusername'] = "Records found for user:";
 $l['helpPage']['reponline'] = "
 The following table lists users who are currently connected to
 the system. It is very much possible that there are stale connections,

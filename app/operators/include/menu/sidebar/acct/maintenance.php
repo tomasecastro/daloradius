@@ -29,17 +29,17 @@ if (strpos($_SERVER['PHP_SELF'], '/include/menu/sidebar/acct/maintenance.php') !
 
 // define descriptors
 $descriptors1 = array();
-$descriptors1[] = array( 'type' => 'link', 'label' => t('button','CleanupStaleSessions'),
+$descriptors1[] = array( 'type' => 'link', 'label' => t('maintenance', 'title'),
                          'href' => 'acct-maintenance-cleanup.php', 'icon' => 'tools', );
-$descriptors1[] = array( 'type' => 'link', 'label' => t('button','DeleteAccountingRecords'),
+$descriptors1[] = array( 'type' => 'link', 'label' => t('maintenance', 'history'),
                          'href' => 'acct-maintenance-delete.php', 'icon' => 'x-circle-fill', );
 
 $sections = array();
-$sections[] = array( 'title' => 'Maintenance', 'descriptors' => $descriptors1 );
+$sections[] = array( 'title' => t('sidebar', 'Maintenance'), 'descriptors' => $descriptors1 );
 
 
 // add sections to menu
 $menu = array(
-                'title' => 'Accounting',
+                'title' => t('sidebar', 'Accounting'),
                 'sections' => $sections,
              );

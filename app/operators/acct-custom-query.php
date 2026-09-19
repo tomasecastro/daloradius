@@ -67,15 +67,17 @@
                   in_array(strtolower($_GET['orderType']), array("asc", "desc")))
                ? strtolower($_GET['orderType']) : "asc";
 
+    $date_default = date_range_default('current_month');
+
     $startdate = (array_key_exists('startdate', $_GET) && isset($_GET['startdate']) &&
                   preg_match(DATE_REGEX, $_GET['startdate'], $m) !== false &&
                   checkdate($m[2], $m[3], $m[1]))
-               ? $_GET['startdate'] : "";
+               ? $_GET['startdate'] : $date_default['start'];
 
     $enddate = (array_key_exists('enddate', $_GET) && isset($_GET['enddate']) &&
                 preg_match(DATE_REGEX, $_GET['enddate'], $m) !== false &&
                 checkdate($m[2], $m[3], $m[1]))
-             ? $_GET['enddate'] : "";
+             ? $_GET['enddate'] : $date_default['end'];
 
     $valid_operators = array("equals" => "=", "contains" => "LIKE");
     $where_operator = (array_key_exists('where_operator', $_GET) && !empty($_GET['where_operator']) &&
@@ -97,7 +99,7 @@
     $accounting_custom_value = $where_value_enc;
 
     // print HTML prologue
-    $extra_js = [ "static/js/ajax.js", "static/js/ajaxGeneric.js", ];
+    $extra_js = [ "static/js/request.js", "static/js/readonly_info.js", ];
 
     $title = t('Intro','acctcustomquery.php');
     $help = t('helpPage','acctcustomquery');
@@ -225,7 +227,7 @@
                         if (!empty($row[$field])) {
                             $ajax_id = "divContainerUserInfo_" . $count;
                             $param = sprintf('username=%s', urlencode($row[$field]));
-                            $onclick = "ajaxGeneric('library/ajax/user_info.php','retBandwidthInfo','$ajax_id','$param')";
+                            $onclick = "daloInfo.user('$ajax_id','$param')";
 
                             $value = [
                                         'subject' => $row[$field],

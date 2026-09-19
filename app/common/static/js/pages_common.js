@@ -6,18 +6,30 @@
  * dstObj        - the destination object text input
  * action        - increment or decrement
  ***********************************************************************/
-function changeInteger(dstObj,action) {
-
+function changeInteger(dstObj, action) {
     var dstElem = document.getElementById(dstObj);
-    var dstElemVal = dstElem.value;
-    if (action == 'increment') {
-        dstElem.value = parseInt(dstElemVal)+1;
-    } else {
-        if (dstElemVal < 0)
-            exit;
-        dstElem.value = parseInt(dstElemVal)-1;
+    if (!dstElem) {
+        return;
     }
 
+    var val = parseInt(dstElem.value, 10);
+    if (isNaN(val)) {
+        val = 0;
+    }
+
+    if (action === 'increment') {
+        dstElem.value = val + 1;
+    } else {
+        if (val <= 0) {
+            dstElem.value = 0;
+        } else {
+            dstElem.value = val - 1;
+        }
+    }
+
+    if (typeof Event === 'function') {
+        dstElem.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 }
 
 
@@ -62,82 +74,88 @@ function toggleAttributeSelectbox() {
 
 
 function toggleRandomUsers() {
-
-    //disable field
-    document.batchuser.elements['startingIndex'].disabled=true;
-
-    // enable required fields
-    //document.batchuser.elements['length_pass'].disabled=false;
-    document.batchuser.elements['length_user'].disabled=false;
+    var form = document.forms['batchuser'];
+    if (form && form.elements['startingIndex']) {
+        form.elements['startingIndex'].disabled = true;
+    }
+    if (form && form.elements['length_user']) {
+        form.elements['length_user'].disabled = false;
+    }
 }
 
 
 function toggleIncrementUsers() {
-
-    //disable field
-    //document.batchuser.elements['length_pass'].disabled=true;
-    document.batchuser.elements['length_user'].disabled=true;
-
-    // enable required fields
-    document.batchuser.elements['startingIndex'].disabled=false;
+    var form = document.forms['batchuser'];
+    if (form && form.elements['length_user']) {
+        form.elements['length_user'].disabled = true;
+    }
+    if (form && form.elements['startingIndex']) {
+        form.elements['startingIndex'].disabled = false;
+    }
 }
 
 
 function toggleUserAuth() {
+    var form = document.forms['newuser'];
+    if (!form) {
+        return;
+    }
 
-    //disable the mac auth
-    document.newuser.elements['macaddress'].disabled=true;
-    document.newuser.elements['group_macaddress[]'].disabled=true;
+    var disableFields = ['macaddress', 'group_macaddress[]', 'pincode', 'group_pincode[]'];
+    for (var i = 0; i < disableFields.length; i++) {
+        if (form.elements[disableFields[i]]) {
+            form.elements[disableFields[i]].disabled = true;
+        }
+    }
 
-    // disable pincode auth
-    document.newuser.elements['pincode'].disabled=true;
-    document.newuser.elements['group_pincode[]'].disabled=true;
-
-    //enable the user auth
-    document.newuser.elements['username'].disabled=false;
-    document.newuser.elements['password'].disabled=false;
-    document.newuser.elements['passwordType'].disabled=false;
-    document.newuser.elements['groups[]'].disabled=false;
-    document.newuser.elements['usergroup'].disabled=false;
-
+    var enableFields = ['username', 'password', 'passwordType', 'groups[]', 'usergroup'];
+    for (var j = 0; j < enableFields.length; j++) {
+        if (form.elements[enableFields[j]]) {
+            form.elements[enableFields[j]].disabled = false;
+        }
+    }
 }
 
 function togglePinCode() {
+    var form = document.forms['newuser'];
+    if (!form) {
+        return;
+    }
 
-    // disable pincode auth
-    document.newuser.elements['pincode'].disabled=false;
-    document.newuser.elements['group_pincode[]'].disabled=false;
+    var enableFields = ['pincode', 'group_pincode[]'];
+    for (var i = 0; i < enableFields.length; i++) {
+        if (form.elements[enableFields[i]]) {
+            form.elements[enableFields[i]].disabled = false;
+        }
+    }
 
-    //disable the mac auth
-    document.newuser.elements['macaddress'].disabled=true;
-    document.newuser.elements['group_macaddress[]'].disabled=true;
-
-    // disable the user auth
-    document.newuser.elements['username'].disabled=true;
-    document.newuser.elements['password'].disabled=true;
-    document.newuser.elements['passwordType'].disabled=true;
-    document.newuser.elements['groups[]'].disabled=true;
-    document.newuser.elements['usergroup'].disabled=true;
-
+    var disableFields = ['macaddress', 'group_macaddress[]', 'username', 'password', 'passwordType', 'groups[]', 'usergroup'];
+    for (var j = 0; j < disableFields.length; j++) {
+        if (form.elements[disableFields[j]]) {
+            form.elements[disableFields[j]].disabled = true;
+        }
+    }
 }
 
 function toggleMacAuth(state) {
+    var form = document.forms['newuser'];
+    if (!form) {
+        return;
+    }
 
-    // enable the mac auth
-    document.newuser.elements['macaddress'].disabled=false;
-    document.newuser.elements['group_macaddress[]'].disabled=false;
+    var enableFields = ['macaddress', 'group_macaddress[]'];
+    for (var i = 0; i < enableFields.length; i++) {
+        if (form.elements[enableFields[i]]) {
+            form.elements[enableFields[i]].disabled = false;
+        }
+    }
 
-    // disable the user auth
-    document.newuser.elements['username'].disabled=true;
-    document.newuser.elements['password'].disabled=true;
-    document.newuser.elements['passwordType'].disabled=true;
-    document.newuser.elements['groups[]'].disabled=true;
-    document.newuser.elements['usergroup'].disabled=true;
-
-    // disable pincode auth
-    document.newuser.elements['pincode'].disabled=true;
-    document.newuser.elements['group_pincode[]'].disabled=true;
-
+    var disableFields = ['username', 'password', 'passwordType', 'groups[]', 'usergroup', 'pincode', 'group_pincode[]'];
+    for (var j = 0; j < disableFields.length; j++) {
+        if (form.elements[disableFields[j]]) {
+            form.elements[disableFields[j]].disabled = true;
+        }
+    }
 }
 
 
@@ -214,26 +232,10 @@ function setStringTextMulti(srcId,dstId1, dstId2) {
  *               (visible/hidden)
  ***********************************************************************/
 function toggleShowDiv(idName) {
-
     var divs = document.getElementsByTagName('div');
-    for(i=0;i<divs.length;i++) {
-        if (divs[i].id.match(idName)) {
-            if (document.getElementById) {                            // compatible with IE5 and NS6
-                if (divs[i].style.display=="block")
-                    divs[i].style.display="none";
-                else
-                     divs[i].style.display="block";
-            } else if (document.layers) {                            // compatible with Netscape 4
-                if (document.layers[divs[i]].display=='visible')
-                    document.layers[divs[i]].display = 'hidden';
-                else
-                    document.layers[divs[i]].display = 'visible';
-            } else {
-                if (document.all.hideShow.divs[i].visibility=='visible')        // compatible with IE4
-                    document.all.hideShow.divs[i].visibility = 'hidden';
-                else
-                    document.all.hideShow.divs[i].visibility = 'visible';
-            }
+    for (var i = 0; i < divs.length; i++) {
+        if (divs[i].id && divs[i].id.indexOf(idName) !== -1) {
+            divs[i].style.display = (divs[i].style.display === "block") ? "none" : "block";
         }
     }
 }
@@ -277,20 +279,24 @@ function small_window(user,pass,time) {
 
 
 /***********************************************************************
- * toggleShowDiv
- * user        - the username
- * pass        - the password
- * time        - the credit time that is left for the user
+ * SetChecked
+ * checks or unchecks checkboxes by name in a given form
+ *
+ * val         - true or false
+ * chkName     - the checkbox input name
+ * formname    - the form name
  ***********************************************************************/
 function SetChecked(val,chkName,formname) {
-        dml=document.forms[formname];
-    len = dml.elements.length;
-        var i=0;
-        for( i=0 ; i<len ; i++) {
-                if (dml.elements[i].name==chkName) {
-                dml.elements[i].checked=val;
-                }
+    var dml = document.forms[formname];
+    if (!dml) {
+        return;
+    }
+    var len = dml.elements.length;
+    for (var i = 0; i < len; i++) {
+        if (dml.elements[i].name == chkName) {
+            dml.elements[i].checked = val;
         }
+    }
 }
 
 
@@ -341,39 +347,8 @@ function removeCheckbox(formName,pageDst) {
  * pageDst    - the page destination to be submitted
  *
  ***********************************************************************/
-function disableCheckbox(formName,pageDst) {
-
-        var count = 0;
-        var form = document.getElementsByTagName('input');
-    var values = "";
-
-        for (var i=0; i < form.length; ++i) {
-                var e = form[i];
-                if (e.type == 'checkbox' && e.checked) {
-            values += "username[]=" + e.value + "&";
-                    ++count;
-        }
-        }
-
-    var strUsernames = values.substr(0,values.length-1);
-
-
-    // if no items were checked there's no reason to submit the form
-    if (count == 0) {
-        alert("No items selected");
-        return;
-    }
-
-
-        if (confirm("You are about to disable " + count + " users\nDo you want to continue?"))  {
-
-        ajaxGeneric("library/ajax/user_actions.php","userDisable","returnMessages",strUsernames);
-
-        return true;
-
-        }
-
-        return false;
+function disableCheckbox(formName, pageDst) {
+    return userActionSelection(formName, "userDisable", "disable");
 }
 
 
@@ -385,32 +360,8 @@ function disableCheckbox(formName,pageDst) {
  * pageDst    - the page destination to be submitted
  *
  ***********************************************************************/
-function mailCheckbox(formName,pageDst) {
-
-    var count = 0;
-    var form = document.getElementsByTagName('input');
-    var values = "";
-
-    for (var i=0; i < form.length; ++i) {
-        var e = form[i];
-        if (e.type == 'checkbox' && e.checked) {
-            values += "username[]=" + e.value + "&";
-            ++count;
-        }
-    }
-
-    var strUsernames = values.substr(0,values.length-1);
-
-    // if no items were checked there's no reason to submit the form
-    if (count == 0) {
-        alert("No items selected");
-        return;
-    }
-    if (confirm("You are about to send " + count + " messages\nDo you want to continue?"))  {
-        ajaxGeneric("library/ajax/user_actions.php","userMail","returnMessages",strUsernames);
-        return true;
-    }
-    return false;
+function mailCheckbox(formName, pageDst) {
+    return userActionSelection(formName, "userMail", "send email to");
 }
 
 
@@ -424,39 +375,8 @@ function mailCheckbox(formName,pageDst) {
  * pageDst    - the page destination to be submitted
  *
  ***********************************************************************/
-function enableCheckbox(formName,pageDst) {
-
-        var count = 0;
-        var form = document.getElementsByTagName('input');
-    var values = "";
-
-        for (var i=0; i < form.length; ++i) {
-                var e = form[i];
-                if (e.type == 'checkbox' && e.checked) {
-            values += "username[]=" + e.value + "&";
-                    ++count;
-        }
-        }
-
-    var strUsernames = values.substr(0,values.length-1);
-
-
-    // if no items were checked there's no reason to submit the form
-    if (count == 0) {
-        alert("No items selected");
-        return;
-    }
-
-
-        if (confirm("You are about to enable " + count + " users\nDo you want to continue?"))  {
-
-        ajaxGeneric("library/ajax/user_actions.php","userEnable","returnMessages",strUsernames);
-
-        return true;
-
-        }
-
-        return false;
+function enableCheckbox(formName, pageDst) {
+    return userActionSelection(formName, "userEnable", "enable");
 }
 
 
@@ -505,39 +425,8 @@ function genericCounter(str) {
  * pageDst    - the page destination to be submitted
  *
  ***********************************************************************/
-function refillSessionTimeCheckbox(formName,pageDst) {
-
-        var count = 0;
-        var form = document.getElementsByTagName('input');
-    var values = "";
-
-        for (var i=0; i < form.length; ++i) {
-                var e = form[i];
-                if (e.type == 'checkbox' && e.checked) {
-            values += "username[]=" + e.value + "&";
-                    ++count;
-        }
-        }
-
-    var strUsernames = values.substr(0,values.length-1);
-
-
-    // if no items were checked there's no reason to submit the form
-    if (count == 0) {
-        alert("No items selected");
-        return;
-    }
-
-
-        if (confirm("You are about to refill session time for a total of " + count + " users\nDo you want to continue?\n\nSuch action will also bill the user!"))  {
-
-        ajaxGeneric("library/ajax/user_actions.php","refillSessionTime","returnMessages",strUsernames);
-
-        return true;
-
-        }
-
-        return false;
+function refillSessionTimeCheckbox(formName, pageDst) {
+    return userActionSelection(formName, "refillSessionTime", "refill session time for");
 }
 
 
@@ -557,37 +446,8 @@ function refillSessionTimeCheckbox(formName,pageDst) {
  * pageDst    - the page destination to be submitted
  *
  ***********************************************************************/
-function refillSessionTrafficCheckbox(formName,pageDst) {
-    var count = 0;
-    var form = document.getElementsByTagName('input');
-    var values = "";
-
-    for (var i=0; i < form.length; ++i) {
-        var e = form[i];
-        if (e.type == 'checkbox' && e.checked) {
-            values += "username[]=" + e.value + "&";
-            ++count;
-        }
-    }
-
-    var strUsernames = values.substr(0,values.length-1);
-
-    // if no items were checked there's no reason to submit the form
-    if (count == 0) {
-        alert("No items selected");
-        return;
-    }
-
-    var message = "You are about to refill session traffic fora total of " + count + " users\n"
-                + "Do you want to continue?\n\n"
-                + "Such action will also bill the user!";
-
-    if (confirm(message))  {
-        ajaxGeneric("library/ajax/user_actions.php", "refillSessionTraffic", "returnMessages", strUsernames);
-        return true;
-    }
-
-    return false;
+function refillSessionTrafficCheckbox(formName, pageDst) {
+    return userActionSelection(formName, "refillSessionTraffic", "refill session traffic for");
 }
 
 
@@ -642,4 +502,101 @@ function setupAccordion() {
             panel.style.display = (display) ? "none" : "block";
         });
     }
+}
+
+// A single in-flight action per page prevents duplicate mutations, including
+// activation while the initial disabled-state check is still running.
+var userActionPending = false;
+
+async function userAction(action, usernames, form = null) {
+    const target = document.getElementById('returnMessages');
+    if (!target || userActionPending) return false;
+    const render = (message, level) => {
+        target.replaceChildren();
+        if (!message) return;
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-' + level;
+        alert.setAttribute('role', 'alert');
+        alert.textContent = message;
+        target.appendChild(alert);
+    };
+    if (!usernames.length) {
+        render('No users selected.', 'danger');
+        return false;
+    }
+    const readOnly = action === 'checkDisabled';
+    const parameters = new URLSearchParams({ action });
+    usernames.forEach(username => parameters.append('username[]', username));
+    if (!readOnly) {
+        const token = (form || document).querySelector('input[name="csrf_token"]');
+        if (!token || !token.value) {
+            render('Missing CSRF token. Reload the page before trying again.', 'danger');
+            return false;
+        }
+        parameters.set('csrf_token', token.value);
+    }
+    userActionPending = true;
+    // Include toolbar buttons outside the selection form; preserve disabled state.
+    const buttons = [...document.querySelectorAll('[onclick]')].filter(button =>
+        /(?:disableUser|enableUser|refillSession(?:Time|Traffic)(?:Checkbox)?|disableCheckbox|enableCheckbox|mailCheckbox)\(/.test(button.getAttribute('onclick'))
+    );
+    const states = buttons.map(button => [button, button.disabled]);
+    states.forEach(([button]) => { button.disabled = true; });
+    target.setAttribute('aria-busy', 'true');
+    render('Processing...', 'info');
+    const uncertain = 'The result could not be confirmed. Check the user and billing records before trying again; the action has not been retried.';
+    try {
+        const url = new URL('library/ajax/user_actions.php', document.baseURI);
+        const options = {
+            method: readOnly ? 'GET' : 'POST',
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' },
+            cache: 'no-store'
+        };
+        if (readOnly) url.search = parameters.toString();
+        else options.body = parameters;
+        // Deliberately no retry, timeout or cancellation of mutations.
+        const response = await fetch(url, options);
+        if (response.redirected || response.status === 401) {
+            throw new Error('Your session has expired. Please sign in again.');
+        }
+        if (response.status === 403) {
+            throw new Error('Permission denied or invalid CSRF token. Reload the page and check your permissions.');
+        }
+        if (!(response.headers.get('Content-Type') || '').toLowerCase().startsWith('application/json')) {
+            throw new Error(uncertain);
+        }
+        const result = await response.json();
+        if (!result || typeof result.success !== 'boolean' || typeof result.message !== 'string'
+                || !['success', 'danger', 'warning', 'info'].includes(result.level)) {
+            throw new Error(uncertain);
+        }
+        render(result.message, response.ok && result.success ? result.level : 'danger');
+        return response.ok && result.success;
+    } catch (error) {
+        render(error.message === uncertain || /^(Your session|Permission denied)/.test(error.message)
+            ? error.message : uncertain, 'danger');
+        return false;
+    } finally {
+        userActionPending = false;
+        states.forEach(([button, disabled]) => { button.disabled = disabled; });
+        target.removeAttribute('aria-busy');
+    }
+}
+
+function userActionSelection(formName, action, verb) {
+    if (userActionPending) return false;
+    const form = document.forms[formName];
+    if (!form) return false;
+    const usernames = [...form.querySelectorAll('input[type="checkbox"][name="username[]"]:checked')]
+        .map(input => input.value);
+    if (!usernames.length) {
+        alert('No items selected');
+        return false;
+    }
+    const billing = action.startsWith('refill') ? '\n\nSuch action will also bill the user!' : '';
+    if (confirm(`You are about to ${verb} ${usernames.length} users\nDo you want to continue?${billing}`)) {
+        userAction(action, usernames, form);
+    }
+    return false;
 }

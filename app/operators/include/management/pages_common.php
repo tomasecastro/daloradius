@@ -33,22 +33,41 @@ if (strpos($_SERVER['PHP_SELF'], '/include/management/pages_common.php') !== fal
 
 /* returns a random alpha-numeric string of length $length */
 function createPassword($length, $chars) {
+    if ($length <= 0) {
+        return '';
+    }
+
     if (!$chars) {
         $chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
     }
 
-    srand((double)microtime()*1000000);
-    $i = 0;
+    $charsLength = strlen($chars);
     $pass = '';
 
-    while ($i <= ($length - 1)) {
-        $num = rand() % (strlen($chars));
-        $tmp = substr($chars, $num, 1);
-        $pass = $pass . $tmp;
-        $i++;
+    for ($i = 0; $i < $length; $i++) {
+        $pass .= substr($chars, random_int(0, $charsLength - 1), 1);
     }
 
     return $pass;
+}
+
+// Generated-password exports are session-bound and short-lived.
+define('GENERATED_PASSWORD_EXPORT_LIFETIME_SECONDS', 300);
+
+function cleanupGeneratedPasswordExports($now = null) {
+    if (!isset($_SESSION['generated_password_exports']) ||
+        !is_array($_SESSION['generated_password_exports'])) {
+        return;
+    }
+
+    $now = is_null($now) ? time() : intval($now);
+
+    foreach ($_SESSION['generated_password_exports'] as $token => $export) {
+        if (!is_array($export) || !isset($export['created_at']) ||
+            intval($export['created_at']) <= ($now - GENERATED_PASSWORD_EXPORT_LIFETIME_SECONDS)) {
+            unset($_SESSION['generated_password_exports'][$token]);
+        }
+    }
 }
 
 /* convert byte to to size */
@@ -74,12 +93,6 @@ function toxbyte($size) {
     // Bytes
     return "$size B";
 }
-
-// set of functions to ease the usage of escaping " chars in echo or print functions
-// thanks to php.net
-function qq($text) {return str_replace('`','"',$text); }
-function printq($text) { print qq($text); }
-function printqn($text) { print qq($text)."\n"; }
 
 // function taken from dialup_admin
 function time2str($time, $abbreviate = false) {
@@ -403,10 +416,6 @@ function printTableHead($cols, $orderBy="", $orderType="asc", $partial_query_str
             $href_format = '?orderBy=%s&orderType=%s' . $partial_query_string_safe; 
             $href_asc = htmlspecialchars(sprintf($href_format, $param, 'asc'), ENT_QUOTES, 'UTF-8', false);
             $href_desc = htmlspecialchars(sprintf($href_format, $param, 'desc'), ENT_QUOTES, 'UTF-8', false);
-
-            //~ $img_format = '<img src="%s" alt="%s">';
-            //~ $img_asc = sprintf($img_format, 'static/images/icons/arrow_up.png', '^');
-            //~ $img_desc = sprintf($img_format, 'static/images/icons/arrow_down.png', 'v');
 
             $img_format = '<i class="bi bi-%s ms-1 text-dark"></i>';
             $img_asc = sprintf($img_format, 'sort-alpha-up');

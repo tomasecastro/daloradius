@@ -21,28 +21,23 @@
  *********************************************************************************************************
  */
 
-    include("library/checklogin.php");
+    include_once implode(DIRECTORY_SEPARATOR, [ __DIR__, '..', 'common', 'includes', 'config_read.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'checklogin.php' ]);
     $operator = $_SESSION['operator_user'];
 
-    include('../common/includes/config_read.php');
-    include('library/check_operator_perm.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'check_operator_perm.php' ]);
 
-    include_once("lang/main.php");
-    include("../common/includes/validation.php");
-    include("../common/includes/layout.php");
-    include_once("include/management/functions.php");
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LANG'], 'main.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'validation.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'layout.php' ]);
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'functions.php' ]);
 
     // init logging variables
     $log = "visited page: ";
     $logAction = "";
     $logDebugSQL = "";
 
-    // if cleartext passwords are not allowed,
-    // we remove Cleartext-Password from the $valid_passwordTypes array
-    if (isset($configValues['CONFIG_DB_PASSWORD_ENCRYPTION']) &&
-        strtolower(trim($configValues['CONFIG_DB_PASSWORD_ENCRYPTION'])) !== 'yes') {
-        $valid_passwordTypes = array_values(array_diff($valid_passwordTypes, array("Cleartext-Password")));
-    }
+    $valid_passwordTypes = dalo_filter_password_types($valid_passwordTypes);
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (array_key_exists('csrf_token', $_POST) && isset($_POST['csrf_token']) && dalo_check_csrf_token($_POST['csrf_token'])) {
@@ -89,13 +84,16 @@
             $notes = (isset($_POST['notes']) && !empty(trim($_POST['notes']))) ? trim($_POST['notes']) : "";
 
             // first we check user portal login password
-            $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) && !empty(trim($_POST['portalLoginPassword'])))
+            $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) &&
+                                       dalo_portal_password_is_acceptable($_POST['portalLoginPassword']))
                                     ? trim($_POST['portalLoginPassword']) : "";
 
+            $portal_access_valid = dalo_portal_access_is_valid($_POST);
+
             // these are forced to 0 (disabled) if user portal login password is empty
-            $ui_changeuserinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
+            $ui_changeuserinfo = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
                                ? '1' : '0';
-            $ui_enableUserPortalLogin = (!empty($ui_PortalLoginPassword) && isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
+            $ui_enableUserPortalLogin = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
                                       ? '1' : '0';
 
             isset($_POST['dictAttributes']) ? $dictAttributes = $_POST['dictAttributes'] : $dictAttributes = "";
@@ -129,16 +127,13 @@
             $bi_notes = (array_key_exists('bi_notes', $_POST) && isset($_POST['bi_notes'])) ? $_POST['bi_notes'] : "";
 
             // this is forced to 0 (disabled) if user portal login password is empty
-            $bi_changeuserbillinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
+            $bi_changeuserbillinfo = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
                                    ? '1' : '0';
 
-            //~ isset($_POST['bi_billstatus']) ? $bi_billstatus = $_POST['bi_billstatus'] : $bi_billstatus = "";
-            //~ isset($_POST['bi_lastbill']) ? $bi_lastbill = $_POST['bi_lastbill'] : $bi_lastbill = "";
-            //~ isset($_POST['bi_nextbill']) ? $bi_nextbill = $_POST['bi_nextbill'] : $bi_nextbill = "";
             $bi_nextinvoicedue = (array_key_exists('bi_nextinvoicedue', $_POST) && isset($_POST['bi_nextinvoicedue'])) ? $_POST['bi_nextinvoicedue'] : "";
             $bi_billdue = (array_key_exists('bi_billdue', $_POST) && isset($_POST['bi_billdue'])) ? $_POST['bi_billdue'] : "";
 
-            include('../common/includes/db_open.php');
+            include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_open.php' ]);
 
             // we will have a $username_to_check, only
             // if required arguments have been supplied
@@ -169,6 +164,11 @@
             } else {
                 // authentication method is invalid
                 $failureMsg = "Unknown authentication method";
+            }
+
+            if (!$portal_access_valid) {
+                $failureMsg = "A portal password is required before portal access can be enabled";
+                $username_to_check = "";
             }
 
             if (empty($username_to_check)) {
@@ -220,7 +220,7 @@
                     // handleAttributes() - called later - will take care of it.
                     $_POST['injected_attribute'] = array( $attribute, $value, ':=', 'check' );
 
-                    include("library/attributes.php");
+                    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'attributes.php' ]);
 
                     $skipList = array( "authType", "username", "password", "passwordType", "groups",
                                        "macaddress", "pincode", "submit", "firstname", "lastname", "email",
@@ -265,7 +265,6 @@
 
                     // adding billing info
                     $params = array(
-                                        //~ "planName" => $planName,
                                         "contactperson" => $bi_contactperson,
                                         "company" => $bi_company,
                                         "email" => $bi_email,
@@ -294,9 +293,6 @@
                                         "notes" => $bi_notes,
                                         "changeuserbillinfo" => $bi_changeuserbillinfo,
 
-                                        //~ "billstatus" => $bi_billstatus,
-                                        //~ "lastbill" => $bi_lastbill,
-                                        //~ "nextbill" => $bi_nextbill,
                                         "billdue" => $bi_billdue,
                                         "nextinvoicedue" => $bi_nextinvoicedue,
 
@@ -331,7 +327,7 @@
                 }
             }
 
-            include('../common/includes/db_close.php');
+            include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_close.php' ]);
         } else {
             // csrf
             $failureMsg = "CSRF token error";
@@ -347,9 +343,8 @@
     $extra_css = array();
 
     $extra_js = array(
-        "static/js/ajax.js",
+        "static/js/request.js",
         "static/js/dynamic_attributes.js",
-        "static/js/ajaxGeneric.js",
         "static/js/productive_funcs.js",
     );
 
@@ -360,11 +355,11 @@
 
     print_title_and_help($title, $help);
 
-    include_once('include/management/actionMessages.php');
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'actionMessages.php' ]);
 
     if (!isset($successMsg)) {
 
-        include_once('include/management/populate_selectbox.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'populate_selectbox.php' ]);
 
         $input_descriptors0 = array();
 
@@ -519,22 +514,21 @@
         close_tab();
 
 
-        //~ $customApplyButton = sprintf('<input type="submit" name="submit" value="%s" class="button">', t('buttons','apply'));
 
         // open 1-th tab (shown)
         open_tab($navkeys, 1);
-        include_once('include/management/userinfo.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'userinfo.php' ]);
         close_tab($navkeys, 1);
 
 
         // open 2-th tab (shown)
         open_tab($navkeys, 2);
-        include_once('include/management/userbillinfo.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'userbillinfo.php' ]);
         close_tab($navkeys, 2);
 
         // open 3-th tab (shown)
         open_tab($navkeys, 3);
-        include_once('include/management/attributes.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'attributes.php' ]);
         close_tab($navkeys, 3);
 
         // close tab wrapper
@@ -563,7 +557,7 @@
 
     print_back_to_previous_page();
 
-    include('include/config/logging.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_CONFIG'], 'logging.php' ]);
 
     $inline_extra_js = '
 function switchAuthType() {

@@ -226,7 +226,6 @@ $l['all']['ActiveUsers'] = "المستخدمين النشطين";
 $l['all']['TotalBilled'] = "إجمالي المفوتر";
 $l['all']['TotalPayed'] = "إجمالي المدفوع";
 $l['all']['Balance'] = "الرصيد";
-$l['all']['CardBank'] = "كارت البنك";
 $l['all']['Type'] = "النوع";
 $l['all']['CardBank'] = "كارت البنك";
 $l['all']['MACAddress'] = "عنوان ماك";
@@ -349,7 +348,6 @@ $l['all']['BandwidthDown'] = "حجم التحميل";
 
 $l['all']['BatchCost'] = "تكلفة الدفعة";
 
-$l['all']['PaymentDate'] = "تاريخ الدفع";
 $l['all']['PaymentStatus'] = "حالة الدفع";
 $l['all']['FirstName'] = "الاسم الاول";
 $l['all']['LastName'] = "الاسم الاخير";
@@ -723,6 +721,55 @@ $l['button']['HotspotsComparison'] = "مقارنة نقاط الوصول";
 
 $l['button']['CleanupStaleSessions'] = "تنظيف الجلسات العالقة";
 $l['button']['DeleteAccountingRecords'] = "حذف السجلات المحاسبية";
+$l['maintenance'] = [
+    'title' => 'صيانة الجلسات المفتوحة',
+    'history' => 'حذف سجل المحاسبة (جميع السجلات)',
+    'help' => <<<'HTML'
+    <h2 class="fs-6">قبل البدء</h2><p>ليس بالضرورة أن يكون سجل محاسبة مفتوحًا قديمًا أو عالقًا. لا تتحقق هذه الأداة من نشاط المستخدم أو اتصال جهاز NAS.</p><h2 class="fs-6">الإجراءات</h2><ul><li><strong>إغلاق الجلسات</strong> يحتفظ بالاستخدام المسجل ويضع علامة الإغلاق على الصفوف المحددة باستخدام <code>Admin-Reset</code>. ولا يفصل المستخدمين عن جهاز NAS.</li><li><strong>حذف السجلات</strong> يزيل نهائيًا الصفوف المفتوحة المحددة وبيانات استخدامها.</li></ul><h2 class="fs-6">النطاق والتأكيد</h2><p>تطابق اسم المستخدم دقيق وفقًا لترتيب قاعدة البيانات. يطابق التاريخ الجلسات التي بدأت قبل منتصف الليل تمامًا في ذلك التاريخ وفقًا للمنطقة الزمنية لقاعدة بيانات المحاسبة/الخادم.</p><p>عاين كل عملية قبل تأكيدها. تحتوي المعاينة على 100 صف كحد أقصى، وتنتهي صلاحيتها بعد 10 دقائق، ويمكن استخدامها مرة واحدة. يتم تخطي الصفوف التي تغيرت أو لم تعد مؤهلة.</p>
+    HTML,
+    'close' => 'إغلاق الجلسات',
+    'delete' => 'حذف السجلات',
+    'details' => 'التفاصيل',
+    'openWarning' => 'قد تظل الجلسات المفتوحة نشطة.',
+    'openHelp' => 'السجلات التي يكون وقت توقفها مفقودًا أو ذا قيمة صفرية قديمة فقط هي المؤهلة. لا يتم إجراء أي كشف لعدم النشاط.',
+    'dateHelp' => 'يعني نطاق التاريخ أن تبدأ الجلسة قبل التاريخ المحدد، بشكل حصري عند 00:00:00 في المنطقة الزمنية لقاعدة بيانات المحاسبة/الخادم (وليس المنطقة الزمنية لمتصفحك). وليس هذا حدًا زمنيًا لآخر نشاط.',
+    'selectTitle' => 'تحديد الجلسات',
+    'closeSummary' => 'الاحتفاظ ببيانات المحاسبة ووضع علامة الإغلاق على الجلسات المحددة.',
+    'deleteSummary' => 'إزالة سجلات المحاسبة المفتوحة المحددة نهائيًا.',
+    'closeHelp' => 'تُغلق السجلات الآن بسبب إنهاء يدوي هو Admin-Reset. ولا يفصل ذلك المستخدمين عن جهاز NAS. يتم الاحتفاظ بالمدة المسجلة وعدادات حركة المرور دون تغيير؛ ولا يُضمن إجراء تحديثات محاسبية مستقبلية.',
+    'deleteHelp' => 'لا يمكن التراجع عن الحذف. تتم إزالة الاستخدام المسجل نهائيًا، وقد تتغير التقارير أو إجماليات الاستخدام. لا يُحذف سجل الجلسات المغلقة بهذه الأداة.',
+    'scope' => 'تحديد النطاق',
+    'username' => 'اسم المستخدم',
+    'date' => 'بدء الجلسة قبل التاريخ',
+    'value' => 'اسم المستخدم أو التاريخ (YYYY-MM-DD)',
+    'filterHelp' => 'يتطلب تغيير هذا المرشح معاينة جديدة.',
+    'filterDetails' => 'يتبع تطابق اسم المستخدم ترتيب قاعدة بيانات المحاسبة؛ ولا يدعم البحث باستخدام أحرف البدل.',
+    'preview' => 'معاينة السجلات المطابقة',
+    'previewTitle' => 'معاينة',
+    'previewDetails' => 'تفاصيل المعاينة',
+    'count' => '%d سجل مطابق وقت العد؛ %d سجل في هذه المعاينة. الحد الأقصى %d لكل عملية، مرتبة حسب معرّف المحاسبة. لا يمكن تغيير سوى السجلات المعروضة. كرر المعاينة للحصول على دفعة أخرى؛ فقد يتغير العدد أثناء تحديثات المحاسبة.',
+    'concurrency' => 'تنتهي صلاحية التأكيد بعد 10 دقائق ويمكن استخدامه مرة واحدة فقط. يتم تخطي السجلات التي غيّرتها تحديثات Interim/Stop أو التي لم تعد مؤهلة. لا تُضاف السجلات المطابقة حديثًا إلى هذه العملية مطلقًا.',
+    'id' => 'معرّف المحاسبة',
+    'nas' => 'عنوان NAS',
+    'start' => 'بدء الجلسة',
+    'activity' => 'وقت التحديث المسجل',
+    'seconds' => 'الثواني المسجلة',
+    'input' => 'بايتات الإدخال المسجلة',
+    'output' => 'بايتات الإخراج المسجلة',
+    'activityHelp' => 'يُعرض وقت التحديث فقط إذا كان مخطط المحاسبة يوفر acctupdatetime. وتُعرض القيم المفقودة كشرطة. ولا تثبت قيم قاعدة البيانات هذه عدم النشاط أو اتصال جهاز NAS.',
+    'closeSelectionOne' => 'تم تحديد جلسة واحدة (%d)',
+    'closeSelectionMany' => 'تم تحديد %d جلسات',
+    'deleteSelectionOne' => 'تم تحديد سجل واحد (%d)',
+    'deleteSelectionMany' => 'تم تحديد %d سجلات',
+    'closeConfirmOne' => 'إغلاق جلسة واحدة (%d)',
+    'closeConfirmMany' => 'إغلاق %d جلسات',
+    'deleteConfirmOne' => 'حذف سجل واحد نهائيًا (%d)',
+    'deleteConfirmMany' => 'حذف %d سجلات نهائيًا',
+    'empty' => 'لا توجد سجلات مفتوحة مطابقة. لم يتغير شيء.',
+    'result' => '%s: تم التأثير فعليًا على %d، وتخطي %d من السجلات التي تغيرت أو لم تعد مؤهلة، وفشل %d. عاين مرة أخرى قبل إجراء أي عملية أخرى.',
+    'invalid' => 'الطلب أو المرشح أو رمز CSRF غير صالح، أو انتهت صلاحية التأكيد. لم يتغير شيء. أنشئ معاينة جديدة.',
+    'error' => 'تعذر قراءة سجلات المحاسبة. لم تُنفذ أي عملية.',
+];
 
 $l['button']['ListUsers'] = "قائمة المستخدمين";
 $l['button']['ListBatches'] = "قائمة حزم الكروت";
@@ -1013,7 +1060,6 @@ $l['Intro']['configdashboard.php'] = "اعدادات لوحة التحكم";
 $l['Intro']['paymenttypesmain.php'] = "صفحة أصناف الدفع";
 $l['Intro']['paymenttypesdel.php'] = "حذف صنف الدفع";
 $l['Intro']['paymenttypesedit.php'] = "تعديل صنف الدفع";
-$l['Intro']['paymenttypeslist.php'] = "جدول أصناف المدفوعات";
 $l['Intro']['paymenttypesnew.php'] = "انشاء صنف دفع جديد";
 $l['Intro']['paymenttypeslist.php'] = "جدول أصناف المدفوعات";
 $l['Intro']['paymentslist.php'] = "جدول المدفوعات";
@@ -1130,10 +1176,8 @@ $l['Intro']['rephsall.php'] = "قائمة الهوت سبوت";
 $l['Intro']['repmain.php'] = "صفحة التقارير";
 $l['Intro']['repstatus.php'] = "صفحة الحالة";
 $l['Intro']['reptopusers.php'] = "أعلى المستخدمين";
-$l['Intro']['repusername.php'] = "عرض المستخدمين";
 
 
-$l['Intro']['mngbatch.php'] = "إنشاء حزمة كروت";
 $l['Intro']['mngbatchdel.php'] = "حذف جلسات دفعة";
 
 $l['Intro']['mngdel.php'] = "حذف مستخدم";
@@ -1296,7 +1340,6 @@ $l['helpPage']['mngradattributesedit'] = "تعديل سمة-صفة";
 $l['helpPage']['mngradattributessearch'] = "البحث عن سمة-صفة";
 $l['helpPage']['mngradattributesdel'] = "حذف سمة-صفة";
 $l['helpPage']['mngradattributesimport'] = "إستيراد سمات مزود";
-$l['helpPage']['mngimportusers'] = "استيراد مستخدمين";
 
 
 $l['helpPage']['msgerrorpermissions'] = "ليس لديك الصلاحية لعرض هذه الصفحة";
@@ -1487,7 +1530,7 @@ $l['helpPage']['graphsoveralllogins'] = "Plots a graphical chart of the Login at
 
 
 $l['helpPage']['rephistory'] = "Lists all activity performed on management items and provides information on <br/>
-Creation Date, Creation By as well as Updated Date and Update By history fields";
+Creation Date, Created By as well as Update Date and Updated By history fields";
 $l['helpPage']['replastconnect'] = "Lists all login attempts to the RADIUS server, both successful and failed logins";
 $l['helpPage']['replogsboot'] = "Monitor Operating System Boot log - equivalent to running the dmesg command.";
 $l['helpPage']['replogsdaloradius'] = "Monitor daloRADIUS's Logfile.";
@@ -1514,7 +1557,6 @@ $l['helpPage']['repstatradius'] = "حالة الراديوس وقواعد الب
 $l['helpPage']['repstatserver'] = "حالة الخادم من زمن العمل والحمل على المعالج واستخدام الذاكرة والمساحة المتاحة للتخزين وعنوان الأي بي";
 $l['helpPage']['repstatus'] = "حالة الخادم من زمن العمل والحمل على المعالج واستخدام الذاكرة والمساحة المتاحة للتخزين وعنوان الأي بي";
 $l['helpPage']['reptopusers'] = "قائمة أعلى المستخدمين في الاستهلاك";
-$l['helpPage']['repusername'] = "المستخدمين الذين تم العثور عليهم";
 $l['helpPage']['reponline'] = "المستخدمين المتصلين حاليا";
 
 

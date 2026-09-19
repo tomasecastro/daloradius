@@ -21,31 +21,26 @@
  *********************************************************************************************************
  */
 
-    include("library/checklogin.php");
+    include_once implode(DIRECTORY_SEPARATOR, [ __DIR__, '..', 'common', 'includes', 'config_read.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'checklogin.php' ]);
     $operator = $_SESSION['operator_user'];
 
-    include('../common/includes/config_read.php');
-    include('library/check_operator_perm.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'check_operator_perm.php' ]);
 
-    include_once("lang/main.php");
-    include("../common/includes/validation.php");
-    include("../common/includes/layout.php");
-    include_once("include/management/functions.php");
-    include_once("library/attributes.php");
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LANG'], 'main.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'validation.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'layout.php' ]);
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'functions.php' ]);
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'attributes.php' ]);
 
     // init logging variables
     $log = "visited page: ";
     $logAction = "";
     $logDebugSQL = "";
 
-    // if cleartext passwords are not allowed,
-    // we remove Cleartext-Password from the $valid_passwordTypes array
-    if (isset($configValues['CONFIG_DB_PASSWORD_ENCRYPTION']) &&
-        strtolower(trim($configValues['CONFIG_DB_PASSWORD_ENCRYPTION'])) !== 'yes') {
-        $valid_passwordTypes = array_values(array_diff($valid_passwordTypes, array("Cleartext-Password")));
-    }
+    $valid_passwordTypes = dalo_filter_password_types($valid_passwordTypes);
 
-    include('../common/includes/db_open.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_open.php' ]);
 
     // init valid account type
     $valid_accountTypes = array(
@@ -67,11 +62,11 @@
     }
 
     // get valid groups and plan names
-    include_once('include/management/populate_selectbox.php');
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'populate_selectbox.php' ]);
     $valid_groups = get_groups();
     $valid_planNames = get_plans();
 
-    include('include/management/pages_common.php');
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'pages_common.php' ]);
 
 
     function addUserBatchHistory($dbSocket) {
@@ -111,9 +106,8 @@
     $extra_css = array();
 
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/ajaxGeneric.js",
         "static/js/productive_funcs.js",
+        "static/js/request.js",
         "static/js/dynamic_attributes.js",
     );
 
@@ -169,13 +163,16 @@
                 $notes = (array_key_exists('notes', $_POST) && isset($_POST['notes'])) ? $_POST['notes'] : "";
 
                 // first we check user portal login password
-                $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) && !empty(trim($_POST['portalLoginPassword'])))
+                $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) &&
+                                           dalo_portal_password_is_acceptable($_POST['portalLoginPassword']))
                                         ? trim($_POST['portalLoginPassword']) : "";
 
+                $portal_access_valid = dalo_portal_access_is_valid($_POST);
+
                 // these are forced to 0 (disabled) if user portal login password is empty
-                $ui_changeuserinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
+                $ui_changeuserinfo = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
                                    ? '1' : '0';
-                $ui_enableUserPortalLogin = (!empty($ui_PortalLoginPassword) && isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
+                $ui_enableUserPortalLogin = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
                                           ? '1' : '0';
 
                 /* variables for userbillinfo */
@@ -210,7 +207,7 @@
                 $bi_emailinvoice = (array_key_exists('bi_emailinvoice', $_POST) && isset($_POST['bi_emailinvoice'])) ? $_POST['bi_emailinvoice'] : "";
 
                 // this is forced to 0 (disabled) if user portal login password is empty
-                $bi_changeuserbillinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
+                $bi_changeuserbillinfo = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
                                        ? '1' : '0';
 
 
@@ -248,14 +245,22 @@
 
                 // before looping through all generated batch users we create the batch_history entry
                 // to associate the created users with a batch_history entry
-                $sql_batch_id = addUserBatchHistory($dbSocket);
+                if (!$portal_access_valid) {
+                    $failureMsg = "A portal password is required before portal access can be enabled";
+                    $logAction .= "Failure creating batch because portal access requires a password on page: ";
+                    $sql_batch_id = 0;
+                } else {
+                    $sql_batch_id = addUserBatchHistory($dbSocket);
+                }
 
                 if ($sql_batch_id == 0) {
                     // 0 may be returned in the case of failure in adding the batch_history record due
                     // to SQL related issues or in case where there is a duplicate record of the batch_history,
                     // meaning, the same batch_name is used to identify the batch entry
-                    $failureMsg = "Failure creating batch users due to an error or possible duplicate entry: <b> $batch_name </b>";
-                    $logAction .= "Failure creating a batch_history entry on page: ";
+                    if ($portal_access_valid) {
+                        $failureMsg = "Failure creating batch users due to an error or possible duplicate entry: <b> $batch_name </b>";
+                        $logAction .= "Failure creating a batch_history entry on page: ";
+                    }
                 } else {
 
                     $actionMsgBadUsernames = "";
@@ -466,9 +471,9 @@
         }
     }
 
-    include('../common/includes/db_close.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_close.php' ]);
 
-    include_once('include/management/actionMessages.php');
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'actionMessages.php' ]);
 
     if (!empty($exportForm)) {
         echo $exportForm;
@@ -652,17 +657,17 @@
 
         // open 1-st tab
         open_tab($navkeys, 1);
-        include_once('include/management/userinfo.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'userinfo.php' ]);
         close_tab($navkeys, 1);
 
         // open 2-nd tab
         open_tab($navkeys, 2);
-        include_once('include/management/userbillinfo.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'userbillinfo.php' ]);
         close_tab($navkeys, 2);
 
         // open 3-rd tab
         open_tab($navkeys, 3);
-        include_once('include/management/attributes.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'attributes.php' ]);
         close_tab($navkeys, 3);
 
         // close tab wrapper
@@ -690,7 +695,7 @@
 
     }
 
-    include('include/config/logging.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_CONFIG'], 'logging.php' ]);
 
     // extra javascript
     $inline_extra_js = <<<EOF

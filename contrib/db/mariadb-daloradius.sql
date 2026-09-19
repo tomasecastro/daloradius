@@ -618,8 +618,7 @@ INSERT INTO `operators_acl_files` (`file`, `category`, `section`) VALUES
 ('rep_stat_server', 'Reporting', 'Status'),
 ('rep_stat_services', 'Reporting', 'Status'),
 ('rep_stat_ups', 'Reporting', 'Status'),
-('rep_topusers', 'Reporting', 'Core'),
-('rep_username', 'Reporting', 'Core');
+('rep_topusers', 'Reporting', 'Core');
 
 /*!40000 ALTER TABLE `operators_acl_files` ENABLE KEYS */;
 UNLOCK TABLES;
@@ -889,7 +888,7 @@ CREATE TABLE `userinfo` (
   `zip` VARCHAR(200) DEFAULT NULL,
   `notes` VARCHAR(200) DEFAULT NULL,
   `changeuserinfo` VARCHAR(128) DEFAULT NULL,
-  `portalloginpassword` VARCHAR(128) DEFAULT '',
+  `portalloginpassword` VARCHAR(255) DEFAULT '',
   `enableportallogin` INT(32) DEFAULT '0',
   `creationdate` DATETIME DEFAULT '0000-00-00 00:00:00',
   `creationby` VARCHAR(128) DEFAULT NULL,

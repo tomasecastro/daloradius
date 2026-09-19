@@ -26,7 +26,15 @@ If you encounter any issues during the installation or have any questions, feel 
 
 The documentation for daloRADIUS is available in Markdown format and can be found in the `doc` folder of this repository.
 
-For Docker usage, including the Compose stack and standalone web image, see [README.docker-standalone.md](README.docker-standalone.md).
+### Docker
+
+For a complete local stack, copy `.env.example` to `.env`, set the required secrets, and start MariaDB, FreeRADIUS, and the web interfaces with:
+
+```bash
+docker compose up -d --build
+```
+
+The primary `Dockerfile` can also run the web interfaces alone against externally managed MariaDB and FreeRADIUS services. See the [Docker usage guide](README.docker.md) for environment variables, ports, persistence, upgrades, and both deployment modes.
 
 ## Contributors
 
@@ -86,6 +94,7 @@ Would you like to contribute too? Learn how to get started: [How to Contribute](
 - **Date (From/To)**: Get accounting records within a specified date range.
 - **Display of All Accounting Records**: Access a comprehensive view of all accounting records in the radius database.
 - **Display of Active Accounting Records**: Monitor active accounting sessions using Max-All-Session attribute or Expiration attribute.
+- **Open-Session Maintenance**: Preview open accounting records and either close them while retaining usage data or permanently delete selected records. See [Maintaining open accounting sessions](doc/setup/open-session-maintenance.md).
 - **Custom Accounting Query**: Perform custom accounting queries to extract specific data.
 
 ### HotSpots Accounting
@@ -118,7 +127,8 @@ daloRADIUS comes with integrated support for GIS provided by Leaflet and CARTO b
 ### Status Reporting
 
 - **Server Status**: Provides detailed information on the server where daloRADIUS is deployed, including CPU utilization, uptime, memory, disk information, and more.
-- **RADIUS Status**: Provides information on whether the FreeRADIUS server is running, along with the database server (e.g., MySQL, PostgreSQL, or others).
+
+The former **Services Status** page has been removed. Monitor daloRADIUS, FreeRADIUS, and the database using your preferred external monitoring solution (for example, [Zabbix](https://www.zabbix.com/) or [Prometheus](https://prometheus.io/)), with availability checks and alerting independent of the PHP web interface. Remove any bookmarks to the former page.
 
 ## Billing
 
@@ -175,6 +185,8 @@ daloRADIUS supports Operators for complete management of the entire platform. Di
 
 For new installations, use the schemas found in `contrib/db/mariadb-daloradius*.sql`. If you're upgrading an existing daloRADIUS setup, review `contrib/db/migrations/` and apply the relevant SQL migrations before using any newly introduced features. See the [upgrade notes](../../wiki/daloRADIUS-upgrade-notes-(Debian)) in the wiki for details.
 
+User portal passwords are separate from FreeRADIUS password attributes. Newly created or changed portal credentials are stored using PHP's `password_hash()`; existing installations should follow the [user portal password upgrade guide](doc/setup/user-portal-passwords.md) to migrate legacy plaintext values.
+
 
 
 # Credits
@@ -185,7 +197,7 @@ For new installations, use the schemas found in `contrib/db/mariadb-daloradius*.
 * bootstrap icons - [https://icons.getbootstrap.com/](https://icons.getbootstrap.com/)
 * dompdf - [https://github.com/dompdf](https://github.com/dompdf)
 * htmlpurifier - [https://github.com/ezyang/htmlpurifier](https://github.com/ezyang/htmlpurifier)
-* jpgraph - [https://jpgraph.net/](https://jpgraph.net/)
+* Chart.js - [https://www.chartjs.org/](https://www.chartjs.org/)
 * phpmailer - [https://github.com/PHPMailer/PHPMailer](https://github.com/PHPMailer/PHPMailer)
 * php-svg-qrcode - [https://github.com/philronan/php-svg-qrcode](https://github.com/philronan/php-svg-qrcode)
 * totp-php - [https://github.com/remotemerge/totp-php](https://github.com/remotemerge/totp-php)

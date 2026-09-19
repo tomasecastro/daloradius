@@ -47,8 +47,8 @@ if (!empty($username_enc)) {
     
     $button_descriptors1[] = array( "onclick" => sprintf("self.location='config-maint-disconnect-user.php?username=%s'", $username_enc),
                                     "type" => "button", "value" => 'Disconnect User', "name" => "disconnect-user-button" );                                
-    $button_descriptors1[] = array( "onclick" => sprintf("self.location='acct-maintenance-cleanup.php?username=%s'", $username_enc),
-                                    "type" => "button", "value" => 'Cleanup Stale Sessions', "name" => "cleanup-stale-sessions-button" );
+    $button_descriptors1[] = array( "onclick" => sprintf("self.location='acct-maintenance-cleanup.php?username=%s'", rawurlencode($username)),
+                                    "type" => "button", "value" => t('maintenance', 'title'), "name" => "cleanup-stale-sessions-button" );
     $button_descriptors1[] = array( "onclick" => sprintf("self.location='acct-username.php?username=%s'", $username_enc),
                                     "type" => "button", "value" => 'Accounting', "name" => "accounting-button" );
     $button_descriptors1[] = array( "onclick" => sprintf("self.location='graphs-overall_logins.php?type=monthly&username=%s'", $username_enc),
@@ -58,9 +58,6 @@ if (!empty($username_enc)) {
     $button_descriptors1[] = array( "onclick" => sprintf("self.location='graphs-overall_upload.php?type=monthly&username=%s'", $username_enc),
                                     "type" => "button", "value" => 'Graphs - Uploads', "name" => "graphs-uploads-button" );
                                     
-    //~ foreach ($button_descriptors1 as $button_descriptor) {
-        //~ print_form_component($button_descriptor);
-    //~ }
 }
 
 ?>
