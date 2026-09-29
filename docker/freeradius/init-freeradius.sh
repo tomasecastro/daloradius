@@ -146,6 +146,34 @@ function fix_nas_ipv4_priority {
 	fi
 }
 
+# Configure EAP/TLS to use the OS snakeoil certificate instead of the bundled
+# FreeRADIUS example certs (server.pem/ca.pem), which expire (Oct 19 2025) and
+# cause "certificate expired" -> clients (mainly iPhones) can't connect.
+# The snakeoil cert is managed by the OS and valid until 2035.
+# Must run on EVERY container start (not only first init) because rebuilding the
+# container resets /etc/freeradius to the image defaults.
+function configure_eap_certs {
+	local eap_conf="$RADIUS_PATH/mods-available/eap"
+	local snakeoil_cert="/etc/ssl/certs/ssl-cert-snakeoil.pem"
+	local snakeoil_key="/etc/ssl/private/ssl-cert-snakeoil.key"
+
+	if [ ! -f "$snakeoil_cert" ] || [ ! -f "$snakeoil_key" ]; then
+		echo "WARN: snakeoil certs not found, skipping EAP cert configuration."
+		return 0
+	fi
+
+	# freerad must be able to read the private key (group ssl-cert)
+	if ! id -nG freerad | grep -qw ssl-cert; then
+		usermod -aG ssl-cert freerad
+		echo "Added freerad to ssl-cert group."
+	fi
+
+	sed -i "s|private_key_file = \${certdir}/server.pem|private_key_file = $snakeoil_key|" "$eap_conf"
+	sed -i "s|certificate_file = \${certdir}/server.pem|certificate_file = $snakeoil_cert|" "$eap_conf"
+	sed -i "s|ca_file = \${cadir}/ca.pem|ca_file = $snakeoil_cert|" "$eap_conf"
+	echo "Configured EAP to use snakeoil certs ($snakeoil_cert)."
+}
+
 function init_freeradius {
 	# Enable SQL in freeradius
 	sed -i 's|driver = "rlm_sql_null"|driver = "rlm_sql_mysql"|' "$RADIUS_PATH/mods-available/sql"
@@ -407,6 +435,9 @@ else
 fi
 
 prepare_freeradius_logs
+
+# Apply EAP cert config on every start (survives container rebuilds)
+configure_eap_certs
 
 # start freeradius in foreground mode
 freeradius -f "$@" &

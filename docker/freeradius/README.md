@@ -40,7 +40,7 @@ The init script (`init-freeradius.sh`) configures FreeRADIUS on first start:
 |-------|---------|:---:|
 | 3b | SQL `read_profiles` + `read_groups` + TLS `enabled` (oportunístico) | ⏳ pendiente |
 | 3c | Dynamic VLAN post-auth + default Session-Timeout 3600 | ⏳ pendiente |
-| 3d | EAP/TLS certs: auto-generación + externos (`cert_ext`/`private_ext`) + snakeoil | ⏳ pendiente |
+| 3d | EAP/TLS certs: auto-generación + externos (`cert_ext`/`private_ext`) + snakeoil | 🟡 parcial (snakeoil hecho) |
 | 3e | Security hardening (SQL escapes, code-review fixes) | ⏳ pendiente |
 
 ## TLS / EAP certificates
@@ -49,6 +49,13 @@ Certificate management (auto-generation and external certificates via
 `ssl/cert_ext` and `ssl/private_ext` bind mounts) arrives in **stage 3d**.
 The mount directories exist already (`.gitkeep` placeholders) so the volume
 wiring in `docker-compose.yml` is ready.
+
+> **Estado 3d (2026-09-29)**: La parte de **snakeoil** ya está implementada de forma
+> permanente. La función `configure_eap_certs` en `init-freeradius.sh` configura EAP
+> para usar los certificados snakeoil del sistema (válidos hasta 2035) en **cada
+> arranque** del contenedor, evitando el error `certificate expired` tras
+> reconstrucciones. La auto-generación de certificados y los certificados externos
+> vía bind-mount siguen pendientes.
 
 > Full certificate management documentation lives in
 > `Documentacion/daloradius/agents/api-developer/19-freeradius-evolutivos-certificados.md`
