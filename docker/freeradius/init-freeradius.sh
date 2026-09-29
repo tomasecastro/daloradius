@@ -132,6 +132,20 @@ function prepare_freeradius_logs {
 	find /var/log/freeradius -type f -exec chmod 0640 {} +
 }
 
+# Fix: prioritize IPv4 over IPv6 when writing/reading NAS IP in SQL queries.
+# MikroTik NAS devices send IPv6 link-local addresses (e.g. fe80::... 25 chars)
+# in NAS-IPv6-Address, which overflows nasipaddress varchar(15) -> ERROR 1406
+# -> Login incorrect -> clients (mainly iPhones) can't connect.
+# Swap the fallback order from '%{%{NAS-IPv6-Address}:-%{NAS-IP-Address}}'
+# to '%{%{NAS-IP-Address}:-%{NAS-IPv6-Address}}' in queries.conf.
+function fix_nas_ipv4_priority {
+	local queries_conf="$RADIUS_PATH/mods-config/sql/main/mysql/queries.conf"
+	if [ -f "$queries_conf" ]; then
+		sed -i "s|'%{%{NAS-IPv6-Address}:-%{NAS-IP-Address}}'|'%{%{NAS-IP-Address}:-%{NAS-IPv6-Address}}'|g" "$queries_conf"
+		echo "Fixed NAS IP priority to IPv4-first in $queries_conf"
+	fi
+}
+
 function init_freeradius {
 	# Enable SQL in freeradius
 	sed -i 's|driver = "rlm_sql_null"|driver = "rlm_sql_mysql"|' "$RADIUS_PATH/mods-available/sql"
@@ -139,6 +153,7 @@ function init_freeradius {
 	sed -i 's|dialect = ${modules.sql.dialect}|dialect = "mysql"|' "$RADIUS_PATH/mods-available/sqlcounter" # avoid instantiation error
 	configure_sql_tls
 	sed -i 's|#\s*read_clients = yes|read_clients = yes|' "$RADIUS_PATH/mods-available/sql"
+	fix_nas_ipv4_priority
 	ln -sf "$RADIUS_PATH/mods-available/sql" "$RADIUS_PATH/mods-enabled/sql"
 	ln -sf "$RADIUS_PATH/mods-available/sqlcounter" "$RADIUS_PATH/mods-enabled/sqlcounter"
 	ln -sf "$RADIUS_PATH/mods-available/sqlippool" "$RADIUS_PATH/mods-enabled/sqlippool"
