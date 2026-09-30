@@ -181,6 +181,10 @@ function init_freeradius {
 	sed -i 's|dialect = ${modules.sql.dialect}|dialect = "mysql"|' "$RADIUS_PATH/mods-available/sqlcounter" # avoid instantiation error
 	configure_sql_tls
 	sed -i 's|#\s*read_clients = yes|read_clients = yes|' "$RADIUS_PATH/mods-available/sql"
+	# read_profiles/read_groups are required for daloRADIUS group management and
+	# dynamic VLAN assignment (Tunnel-* attributes come from radgroupreply).
+	sed -i 's|#\s*read_profiles = yes|read_profiles = yes|' "$RADIUS_PATH/mods-available/sql"
+	sed -i 's|#\s*read_groups = yes|read_groups = yes|' "$RADIUS_PATH/mods-available/sql"
 	fix_nas_ipv4_priority
 	ln -sf "$RADIUS_PATH/mods-available/sql" "$RADIUS_PATH/mods-enabled/sql"
 	ln -sf "$RADIUS_PATH/mods-available/sqlcounter" "$RADIUS_PATH/mods-enabled/sqlcounter"
@@ -188,7 +192,12 @@ function init_freeradius {
 	enable_noresetcounter
 	sed -i 's|instantiate {|instantiate {\nsql|' "$RADIUS_PATH/radiusd.conf" # mods-enabled does not ensure the right order
 
-	
+	# Enable tunneled reply so VLAN attributes travel inside the EAP/PEAP/TTLS tunnel
+	# (required for WiFi Enterprise dynamic VLAN assignment).
+	sed -i 's|use_tunneled_reply = no|use_tunneled_reply = yes|' "$RADIUS_PATH/mods-available/eap"
+
+	# Enable dynamic VLAN assignment via post-auth (from radgroupreply)
+	enable_vlan_post_auth
 
 	# Log authentication request in radius-log file
 	sed -i 's|auth = no|auth = yes|' "$RADIUS_PATH/radiusd.conf"
@@ -335,6 +344,38 @@ function enable_group_nas_restrictions {
 		exit 1
 	fi
 	mv "$freeradius_default_tmp" "$RADIUS_PATH/sites-available/default"
+}
+
+# ---------------------------------------------------------------------------
+# VLAN post-auth - Dynamic VLAN assignment from radgroupreply
+# Uses sed to add VLAN block inside post-auth section.
+# ---------------------------------------------------------------------------
+function enable_vlan_post_auth {
+	if grep -q "VLAN CONFIG" "$RADIUS_PATH/sites-available/default" 2>/dev/null; then
+		echo "VLAN post-auth already applied, skipping."
+		return
+	fi
+
+	# Insert VLAN block before the first Post-Auth-Type section inside post-auth
+	sed -i '/^[[:space:]]*Post-Auth-Type REJECT/{
+		i\
+	# VLAN CONFIG - Dynamic VLAN assignment from radgroupreply\n\
+	if (reply:Tunnel-Private-Group-Id) {\n\
+		# already set by authorize/sql\n\
+	} else {\n\
+		update reply {\n\
+			Tunnel-Private-Group-Id := "%{sql:SELECT value FROM radgroupreply WHERE attribute='\''Tunnel-Private-Group-Id'\'' AND groupname = (SELECT groupname FROM radusergroup WHERE username = '\''%{User-Name}'\'' LIMIT 1)}"\n\
+		}\n\
+	}\n\
+\n\
+	update reply {\n\
+		Tunnel-Type := VLAN\n\
+		Tunnel-Medium-Type := IEEE-802\n\
+		Tunnel-Private-Group-Id := "%{reply:Tunnel-Private-Group-Id}"\n\
+	}\n
+	}' "$RADIUS_PATH/sites-available/default"
+
+	echo "VLAN post-auth enabled."
 }
 
 # ---------------------------------------------------------------------------
