@@ -52,6 +52,11 @@ services:
     volumes:
       - ./data/freeradius:/data
       - radius_logs:/var/log/freeradius
+      # Certificados TLS/EAP persistentes (sobreviven a reconstrucción).
+      # El init-freeradius.sh usa estos volúmenes si contienen server.pem/ca.pem/server.key.
+      # Ver Spec 003 (Documentacion/daloradius/specs/003-certificados-tls-peap/spec.md).
+      - ./docker/freeradius/ssl/cert_ext:/etc/freeradius/certs/cert_ext
+      - ./docker/freeradius/ssl/private_ext:/etc/freeradius/certs/private_ext
     healthcheck:
       test: ["CMD-SHELL", "echo 'FreeRADIUS-Statistics-Type = 1' | radclient -q -r 1 -t 3 127.0.0.1:18121 status adminsecret >/dev/null"]
       interval: 10s

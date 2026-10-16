@@ -103,6 +103,59 @@ function prepare_freeradius_logs {
 	find /var/log/freeradius -type f -exec chmod 0640 {} +
 }
 
+# ---------------------------------------------------------------------------
+# External certificates — prefer cert_ext/private_ext when present
+# Falls back to Debian snakeoil, then to default FreeRADIUS built-in certs.
+#
+# Cadena de preferencia (Spec 003):
+#   1. Externos montados (cert_ext/ + private_ext/)  ← si existen
+#   2. Debian snakeoil del sistema                   ← fallback
+#   3. Certificados por defecto de FreeRADIUS         ← último recurso
+#
+# Directory structure for external certificates (bind-mount volumes):
+#   docker/freeradius/ssl/cert_ext/       → /etc/freeradius/certs/cert_ext/
+#   docker/freeradius/ssl/private_ext/    → /etc/freeradius/certs/private_ext/
+#
+# Los certificados externos viven en volúmenes del host, por lo que
+# SOBREVIVEN a la reconstrucción del contenedor. Colocar los archivos en
+# estas rutas y reiniciar es suficiente; no requiere rebuild de la imagen.
+# ---------------------------------------------------------------------------
+function configure_external_certs {
+	local eap_file="$RADIUS_PATH/mods-available/eap"
+	local cert_ext_path="/etc/freeradius/certs/cert_ext"
+	local private_ext_path="/etc/freeradius/certs/private_ext"
+	local default_cert_dir="$RADIUS_PATH/certs"
+
+	if [ -d "$cert_ext_path" ] && [ -d "$private_ext_path" ] && \
+	   [ -f "$cert_ext_path/server.pem" ] && [ -f "$cert_ext_path/ca.pem" ] && \
+	   [ -f "$private_ext_path/server.key" ]; then
+		echo "External certificates found in $cert_ext_path and $private_ext_path, configuring EAP..."
+		chown -R freerad:freerad "$cert_ext_path" "$private_ext_path"
+		chmod -R 640 "$cert_ext_path"/*.pem "$private_ext_path"/*.key
+		sed -i 's|private_key_file = .*|private_key_file = '"$private_ext_path"'/server.key|' "$eap_file"
+		sed -i 's|certificate_file = .*|certificate_file = '"$cert_ext_path"'/server.pem|' "$eap_file"
+		sed -i 's|ca_file = .*|ca_file = '"$cert_ext_path"'/ca.pem|' "$eap_file"
+		echo "EAP configured to use external certificates."
+	else
+		# Fallback: use Debian snakeoil certificates (valid for 10 years, part of ssl-cert package)
+		if [ -f /etc/ssl/certs/ssl-cert-snakeoil.pem ] && [ -f /etc/ssl/private/ssl-cert-snakeoil.key ]; then
+			echo "External certs not found — configuring EAP to use snakeoil certificates."
+			# Ensure freerad user can read the private key
+			usermod -aG ssl-cert freerad 2>/dev/null || true
+			sed -i 's|private_key_file = .*|private_key_file = /etc/ssl/private/ssl-cert-snakeoil.key|' "$eap_file"
+			sed -i 's|certificate_file = .*|certificate_file = /etc/ssl/certs/ssl-cert-snakeoil.pem|' "$eap_file"
+			sed -i 's|ca_file = .*|ca_file = /etc/ssl/certs/ssl-cert-snakeoil.pem|' "$eap_file"
+			echo "EAP configured to use snakeoil certificates."
+		else
+			echo "No external or snakeoil certificates found, using default FreeRADIUS certs."
+			# Restore default certificate paths (in case they were previously set to external)
+			sed -i 's|private_key_file = .*|private_key_file = '"$default_cert_dir"'/server.key|' "$eap_file"
+			sed -i 's|certificate_file = .*|certificate_file = '"$default_cert_dir"'/server.pem|' "$eap_file"
+			sed -i 's|ca_file = .*|ca_file = '"$default_cert_dir"'/ca.pem|' "$eap_file"
+		fi
+	fi
+}
+
 function init_freeradius {
 	# Enable SQL in freeradius
 	sed -i 's|driver = "rlm_sql_null"|driver = "rlm_sql_mysql"|' "$RADIUS_PATH/mods-available/sql"
@@ -118,6 +171,9 @@ function init_freeradius {
 
 	# Enable used tunnel for unifi
 	sed -i 's|use_tunneled_reply = no|use_tunneled_reply = yes|' "$RADIUS_PATH/mods-available/eap"
+
+	# Configure EAP/TLS certificates (externos → snakeoil → default)
+	configure_external_certs
 
 	# Log authentication request in radius-log file
 	sed -i 's|auth = no|auth = yes|' "$RADIUS_PATH/radiusd.conf"
@@ -333,6 +389,11 @@ else
 	init_freeradius
 	date > "$INIT_LOCK"
 fi
+
+# Aplicar SIEMPRE la cadena de preferencia de certificados EAP/TLS en cada
+# arranque (externos → snakeoil → default). El EAP se pierde al reconstruir
+# el contenedor, por lo que debe re-aplicarse aunque el lock file exista.
+configure_external_certs
 
 # Ensure Max-All-Session is enforced before FreeRADIUS starts, including after
 # lock-file and reinitialization paths.

@@ -146,32 +146,51 @@ function fix_nas_ipv4_priority {
 	fi
 }
 
-# Configure EAP/TLS to use the OS snakeoil certificate instead of the bundled
-# FreeRADIUS example certs (server.pem/ca.pem), which expire (Oct 19 2025) and
-# cause "certificate expired" -> clients (mainly iPhones) can't connect.
-# The snakeoil cert is managed by the OS and valid until 2035.
+# Configure EAP/TLS certificates following the preference chain:
+#   1. External certs mounted in cert_ext/ + private_ext/  ← if present
+#   2. Debian snakeoil (valid until 2035)                  ← fallback
+#   3. Default FreeRADIUS example certs                    ← last resort
+#
+# External certs live in host bind-mount volumes, so they SURVIVE container
+# rebuilds. Placing files in these paths and restarting is enough; no image
+# rebuild required.
+#
 # Must run on EVERY container start (not only first init) because rebuilding the
 # container resets /etc/freeradius to the image defaults.
-function configure_eap_certs {
-	local eap_conf="$RADIUS_PATH/mods-available/eap"
-	local snakeoil_cert="/etc/ssl/certs/ssl-cert-snakeoil.pem"
-	local snakeoil_key="/etc/ssl/private/ssl-cert-snakeoil.key"
+function configure_external_certs {
+	local eap_file="$RADIUS_PATH/mods-available/eap"
+	local cert_ext_path="/etc/freeradius/certs/cert_ext"
+	local private_ext_path="/etc/freeradius/certs/private_ext"
+	local default_cert_dir="$RADIUS_PATH/certs"
 
-	if [ ! -f "$snakeoil_cert" ] || [ ! -f "$snakeoil_key" ]; then
-		echo "WARN: snakeoil certs not found, skipping EAP cert configuration."
-		return 0
+	if [ -d "$cert_ext_path" ] && [ -d "$private_ext_path" ] && \
+	   [ -f "$cert_ext_path/server.pem" ] && [ -f "$cert_ext_path/ca.pem" ] && \
+	   [ -f "$private_ext_path/server.key" ]; then
+		echo "External certificates found in $cert_ext_path and $private_ext_path, configuring EAP..."
+		chown -R freerad:freerad "$cert_ext_path" "$private_ext_path"
+		chmod -R 640 "$cert_ext_path"/*.pem "$private_ext_path"/*.key
+		sed -i 's|private_key_file = .*|private_key_file = '"$private_ext_path"'/server.key|' "$eap_file"
+		sed -i 's|certificate_file = .*|certificate_file = '"$cert_ext_path"'/server.pem|' "$eap_file"
+		sed -i 's|ca_file = .*|ca_file = '"$cert_ext_path"'/ca.pem|' "$eap_file"
+		echo "EAP configured to use external certificates."
+	else
+		# Fallback: use Debian snakeoil certificates (valid for 10 years, part of ssl-cert package)
+		if [ -f /etc/ssl/certs/ssl-cert-snakeoil.pem ] && [ -f /etc/ssl/private/ssl-cert-snakeoil.key ]; then
+			echo "External certs not found — configuring EAP to use snakeoil certificates."
+			# Ensure freerad user can read the private key
+			usermod -aG ssl-cert freerad 2>/dev/null || true
+			sed -i 's|private_key_file = .*|private_key_file = /etc/ssl/private/ssl-cert-snakeoil.key|' "$eap_file"
+			sed -i 's|certificate_file = .*|certificate_file = /etc/ssl/certs/ssl-cert-snakeoil.pem|' "$eap_file"
+			sed -i 's|ca_file = .*|ca_file = /etc/ssl/certs/ssl-cert-snakeoil.pem|' "$eap_file"
+			echo "EAP configured to use snakeoil certificates."
+		else
+			echo "No external or snakeoil certificates found, using default FreeRADIUS certs."
+			# Restore default certificate paths (in case they were previously set to external)
+			sed -i 's|private_key_file = .*|private_key_file = '"$default_cert_dir"'/server.key|' "$eap_file"
+			sed -i 's|certificate_file = .*|certificate_file = '"$default_cert_dir"'/server.pem|' "$eap_file"
+			sed -i 's|ca_file = .*|ca_file = '"$default_cert_dir"'/ca.pem|' "$eap_file"
+		fi
 	fi
-
-	# freerad must be able to read the private key (group ssl-cert)
-	if ! id -nG freerad | grep -qw ssl-cert; then
-		usermod -aG ssl-cert freerad
-		echo "Added freerad to ssl-cert group."
-	fi
-
-	sed -i "s|private_key_file = \${certdir}/server.pem|private_key_file = $snakeoil_key|" "$eap_conf"
-	sed -i "s|certificate_file = \${certdir}/server.pem|certificate_file = $snakeoil_cert|" "$eap_conf"
-	sed -i "s|ca_file = \${cadir}/ca.pem|ca_file = $snakeoil_cert|" "$eap_conf"
-	echo "Configured EAP to use snakeoil certs ($snakeoil_cert)."
 }
 
 function init_freeradius {
@@ -478,7 +497,8 @@ fi
 prepare_freeradius_logs
 
 # Apply EAP cert config on every start (survives container rebuilds)
-configure_eap_certs
+# Cadena de preferencia: externos (cert_ext/private_ext) → snakeoil → default
+configure_external_certs
 
 # start freeradius in foreground mode
 freeradius -f "$@" &

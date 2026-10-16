@@ -18,3 +18,7 @@ var/backup/*.sql
 var/backup/*.sql.gz
 app/common/includes/daloradius.conf.php
 app/common/library/htmlpurifier/HTMLPurifier/DefinitionCache/Serializer/HTML/*
+
+# [002-CONSTITUTION] copia runtime de constitution (no versionar)
+.specify/constitution.md
+
