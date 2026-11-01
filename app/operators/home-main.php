@@ -19,7 +19,7 @@
  *                 RADIUS users, NAS devices, and hotspots. It generates cards for each statistic,
  *                 fetches recent connection attempts and online users
  *                 and presents the data in formatted tables.
- * 
+ *
  * Authors:        Liran Tal <liran@lirantal.com>
  *                 Filippo Lauria <filippo.lauria@iit.cnr.it>
  *
@@ -34,7 +34,18 @@
     include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'layout.php' ]);
     include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'functions.php' ]);
     include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'pages_common.php' ]);
-    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_open.php' ]);
+    require_once __DIR__.'/library/widget_reads_pdo.php';
+    $widgetPDO=null;$dashboardFailed=false;
+    try {$widgetPDO=dalo_widget_open();} catch (Throwable $exception) {dalo_widget_failure($exception);$dashboardFailed=true;}
+    function dashboard_table($key) {
+        global $configValues,$dashboardFailed;
+        try {return dalo_widget_table($configValues,$key);} catch (Throwable $exception) {dalo_widget_failure($exception);$dashboardFailed=true;return '`invalid_widget_table`';}
+    }
+    function dashboard_rows($sql) {
+        global $widgetPDO,$dashboardFailed;
+        if ($dashboardFailed) {return array();}
+        try {return dalo_widget_rows($widgetPDO,$sql);} catch (Throwable $exception) {dalo_widget_failure($exception);$dashboardFailed=true;return array();}
+    }
 
     // setting table-related parameters first
     $tableSetting = [
@@ -56,9 +67,12 @@
     print_html_prologue($title, $langCode);
 
     // Consolidated SQL queries
-    $total_users = count_users($dbSocket);
-    $total_hotspots = count_hotspots($dbSocket);
-    $total_nas = count_nas($dbSocket);
+    $cardRows=dashboard_rows(sprintf("SELECT COUNT(DISTINCT ui.username) FROM %s AS rc,%s AS ui WHERE ui.username=rc.username AND (rc.attribute='Auth-Type' OR rc.attribute LIKE '%%-Password')",dashboard_table('CONFIG_DB_TBL_RADCHECK'),dashboard_table('CONFIG_DB_TBL_DALOUSERINFO')));
+    $total_users=$cardRows[0][0] ?? 0;
+    $cardRows=dashboard_rows('SELECT COUNT(*) FROM '.dashboard_table('CONFIG_DB_TBL_DALOHOTSPOTS'));
+    $total_hotspots=$cardRows[0][0] ?? 0;
+    $cardRows=dashboard_rows('SELECT COUNT(*) FROM '.dashboard_table('CONFIG_DB_TBL_RADNAS'));
+    $total_nas=$cardRows[0][0] ?? 0;
 
 
     function print_title($title, $href, $icon) {
@@ -73,7 +87,7 @@
     function print_dashboard_table_head($headers) {
         echo '<div class="table-responsive dashboard-table-wrapper mb-3">';
         echo '<table class="table table-hover table-striped dashboard-table"><tr>';
-        
+
         foreach ($headers as $header) {
             printf('<th>%s</th>', $header);
         }
@@ -122,18 +136,18 @@
         </div>
     </div>
 </div>
-   
+
 HTML;
-     
+
     }
-    
+
     // Define card parameters
 
     $card_params = [
         [
             "title" => t('submenu', 'Users'),
             "total" => sprintf("%s: <strong>%d</strong>", t('all', 'Total'), $total_users),
-            "linkText" => "Go to users list",
+            "linkText" => t('dashboard', 'GoToUsersList'),
             "linkURL" => "mng-list-all.php",
             "bgColor" => "success",
             "icon" => "people-fill"
@@ -141,7 +155,7 @@ HTML;
         [
             "title" => t('submenu', 'Nas'),
             "total" => sprintf("%s: <strong>%d</strong>", t('all', 'Total'), $total_nas),
-            "linkText" => "Go to NAS list",
+            "linkText" => t('dashboard', 'GoToNASList'),
             "linkURL" => "mng-rad-nas-list.php",
             "bgColor" => "danger",
             "icon" => "router-fill"
@@ -149,16 +163,21 @@ HTML;
         [
             "title" => t('submenu', 'Hotspots'),
             "total" => sprintf("%s: <strong>%d</strong>", t('all', 'Total'), $total_hotspots),
-            "linkText" => "Go to hotspots list",
+            "linkText" => t('dashboard', 'GoToHotspotsList'),
             "linkURL" => "mng-hs-list.php",
             "bgColor" => "primary",
             "icon" => "wifi"
         ]
     ];
 
+    if ($dashboardFailed) {
+        foreach($card_params as &$card) {$card['total']='Unable to read widget data';}
+        unset($card);
+    }
+
     $version = t('all', 'daloRADIUS');
     $copyright = strip_tags(t('all', 'copyright2'));
-    
+
     echo <<<HTML
 <span class="d-flex align-items-center justify-content-start mb-2">
     <h1 class="fs-4 m-0">daloRADIUS</h1>
@@ -168,7 +187,7 @@ HTML;
 </span>
 
 HTML;
-    
+
     // Print cards using parameters
     echo '<div class="row mb-4">';
     foreach ($card_params as $params) {
@@ -182,9 +201,9 @@ HTML;
 
     $sql = sprintf("SELECT %s AS `username`, reply, %s AS `datetime` FROM %s ORDER BY `datetime` DESC LIMIT 10",
                    $tableSetting['postauth']['user'], $tableSetting['postauth']['date'],
-                   $configValues['CONFIG_DB_TBL_RADPOSTAUTH']);
-    $res = $dbSocket->query($sql);
-    $numrows = $res->numRows();
+                   dashboard_table('CONFIG_DB_TBL_RADPOSTAUTH'));
+    $res = dashboard_rows($sql);
+    $numrows = count($res);
 
     echo '<div class="col-12 col-xl-6 m-0 px-3">';
     $title = t('button', 'LastConnectionAttempts');
@@ -194,52 +213,63 @@ HTML;
     if ($numrows > 0) {
         $headers = array(t('all', 'Username'), t('all', 'RADIUSReply'), t('all', 'Date'));
         print_dashboard_table_head($headers);
-        
-        while ($row = $res->fetchRow()) {
+
+        foreach ($res as $row) {
             // Apply htmlspecialchars to each element of the row
             list($user, $reply, $datetime) = array_map(function($value) {
-                return htmlspecialchars(trim($value), ENT_QUOTES, 'UTF-8');
+                return htmlspecialchars(trim((string)($value ?? '')), ENT_QUOTES, 'UTF-8');
             }, $row);
 
-            $reply = sprintf('<span class="text-%s">%s</span>',
-                            (($reply == "Access-Reject") ? "danger" : "success"), $reply);
+            // datetime
+            $datetime = !empty($datetime) ? date('Y-m-d H:i:s', strtotime($datetime)) : t('all','NotAvailable');
+
+            // reply
+            $is_rejected = $reply === 'Access-Reject';
+
+            $badge_class = $is_rejected ? 'text-bg-danger' : 'text-bg-success';
+            $icon = $is_rejected ? 'x-circle-fill' : 'check-circle-fill';
+
+            $reply = sprintf(
+                '<span class="badge %s"><i class="bi bi-%s me-1"></i>%s</span>',
+                $badge_class, $icon, $reply
+            );
 
             print_dashboard_table_row(array($user, $reply, $datetime));
         }
 
         print_dashboard_table_bottom();
-    
+
     } else {
-        print_dashboard_info_message('no data to show');
+        print_dashboard_info_message(t('messages', 'noDataToShow'));
     }
 
     echo '</div>';
     $sql = sprintf("SELECT `username`, `acctstarttime` FROM %s
                      WHERE `acctstoptime` IS NULL OR `acctstoptime`='0000-00-00 00:00:00'
                      ORDER BY `acctstarttime` DESC LIMIT 10",
-                   $configValues['CONFIG_DB_TBL_RADACCT']);
-    $res = $dbSocket->query($sql);
-    $numrows = $res->numRows();
+                   dashboard_table('CONFIG_DB_TBL_RADACCT'));
+    $res = dashboard_rows($sql);
+    $numrows = count($res);
 
     echo '<div class="col-12 col-xl-6 m-0 px-3">';
-    print_title('Currently online', "rep-online.php?orderBy=acctstarttime&orderType=desc", "bi-box-arrow-up-right");
+    print_title(t('dashboard', 'CurrentlyOnline'), "rep-online.php?orderBy=acctstarttime&orderType=desc", "bi-box-arrow-up-right");
 
     if ($numrows > 0) {
-        print_dashboard_table_head(array(t('all', 'Username'), 'Online since'));
-        
-        while ($row = $res->fetchRow()) {
+        print_dashboard_table_head(array(t('all', 'Username'), t('dashboard', 'OnlineSince')));
+
+        foreach ($res as $row) {
             // Apply htmlspecialchars to each element of the row
             $row = array_map(function($value) {
-                return htmlspecialchars(trim($value), ENT_QUOTES, 'UTF-8');
+                return htmlspecialchars(trim((string)($value ?? '')), ENT_QUOTES, 'UTF-8');
             }, $row);
-            
+
             print_dashboard_table_row($row);
         }
 
         print_dashboard_table_bottom();
-    
+
     } else {
-        print_dashboard_info_message('no data to show');
+        print_dashboard_info_message(t('messages', 'noDataToShow'));
     }
 
     echo <<<HTML
@@ -248,25 +278,25 @@ HTML;
     <div class="row">
 HTML;
 
-    $sql = sprintf("SELECT DISTINCT(ra.username) AS `username`, 
+    $sql = sprintf("SELECT DISTINCT(ra.username) AS `username`,
                     SUM(ra.AcctSessionTime) AS `session_time`,
-                    SUM(ra.AcctInputOctets) AS `uploaded_bytes`, 
+                    SUM(ra.AcctInputOctets) AS `uploaded_bytes`,
                     SUM(ra.AcctOutputOctets) AS `downloaded_bytes`
-                    FROM %s AS ra 
-                    WHERE ra.acctstarttime >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) 
-                    GROUP BY `username` 
-                    ORDER BY `session_time` DESC 
-                    LIMIT 10", $configValues['CONFIG_DB_TBL_RADACCT']);
-    $res = $dbSocket->query($sql);
-    $numrows = $res->numRows();
+                    FROM %s AS ra
+                    WHERE ra.acctstarttime >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)
+                    GROUP BY `username`
+                    ORDER BY `session_time` DESC
+                    LIMIT 10", dashboard_table('CONFIG_DB_TBL_RADACCT'));
+    $res = dashboard_rows($sql);
+    $numrows = count($res);
 
-    
+
     // Today's date
     $today = date("Y-m-d");
     // Date one month ago
     $one_month_ago = date("Y-m-d", strtotime("-1 month"));
     $href = sprintf('rep-topusers.php?startdate=%s&enddate=%s&orderBy=Time&orderType=desc', $one_month_ago, $today);
-    $title = "Last month top users";
+    $title = t('dashboard', 'LastMonthTopUsers');
 
     echo '<div class="col-12 m-0 px-3">';
     print_title($title, $href, 'bi-box-arrow-up-right');
@@ -274,9 +304,9 @@ HTML;
     if ($numrows > 0) {
         print_dashboard_table_head(array(t('all', 'Username'), t('all', 'TotalSessionTime'), t('all', 'Upload'), t('all', 'Download')));
 
-        while ($row = $res->fetchRow()) {
+        foreach ($res as $row) {
             list($username, $session_time, $uploaded_bytes, $downloaded_bytes) = array_map(function($value) {
-                return htmlspecialchars(trim($value), ENT_QUOTES, 'UTF-8');
+                return htmlspecialchars(trim((string)($value ?? '')), ENT_QUOTES, 'UTF-8');
             }, $row);
 
             $session_time = time2str($session_time);
@@ -287,16 +317,17 @@ HTML;
         }
 
         print_dashboard_table_bottom();
-    
+
     } else {
-        print_dashboard_info_message('no data to show');
+        print_dashboard_info_message(t('messages', 'noDataToShow'));
     }
 
     echo '</div>';
 
     echo '</div>';
 
-    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_close.php' ]);
+    if ($dashboardFailed) {print_dashboard_info_message('Unable to read widget data');}
+    unset($widgetPDO);
     include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_CONFIG'], 'logging.php' ]);
 
     $inline_extra_js = <<<JS

@@ -31,389 +31,116 @@ include_once('../../../common/includes/mail.php');
 // name of the group of disabled users
 $disabled_groupname = 'daloRADIUS-Disabled-Users';
 
-// username and divContainer are required
-if (array_key_exists('username', $_GET) && isset($_GET['username']) &&
-    array_key_exists('divContainer', $_GET) && isset($_GET['divContainer'])) {
+// Keep errors JSON, including failures in ACL checks and billing helpers.
+function user_actions_response($success, $message, $status = 200, $level = null, $disabled = null) {
+    http_response_code($status);
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store');
+    echo json_encode([
+        'success' => $success,
+        'message' => $message,
+        'level' => $level ?? ($success ? 'success' : 'danger'),
+        'disabled' => $disabled,
+    ], JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+}
 
-    // divContainer id must begin with a letter ([A-Za-z]) and may be followed by any number of letters,
-    // digits ([0-9]), hyphens ("-"), underscores ("_").
-    if (!preg_match('/^[A-Za-z][A-Za-z0-9_-]+$/', $_GET['divContainer'])) {
-        exit;
+$db_error_handler = function ($error) {
+    user_actions_response(false, 'The action could not be completed. Check user and billing records before trying again.', 500);
+};
+
+require_once(__DIR__ . '/user_actions_pdo.php');
+$method = $_SERVER['REQUEST_METHOD'];
+if ($method !== 'GET' && $method !== 'POST') {
+    header('Allow: GET, POST');
+    user_actions_response(false, 'Method not allowed.', 405);
+}
+$input = ($method === 'POST') ? $_POST : $_GET;
+$action = $input['action'] ?? null;
+$actions = array('userEnable', 'userDisable', 'checkDisabled',
+                 'refillSessionTime', 'refillSessionTraffic', 'userMail');
+if (!is_string($action) || !in_array($action, $actions, true)) {
+    user_actions_response(false, 'Missing or unknown action.', 400);
+}
+if ($action !== 'checkDisabled') {
+    if ($method !== 'POST') {
+        header('Allow: POST');
+        user_actions_response(false, 'This action requires POST.', 405);
     }
-
-    $divContainer = $_GET['divContainer'];
-
-    // username could contain a list of usernames
-    $tmp_usernames = (!is_array($_GET['username'])) ? array( $_GET['username'] ) : $_GET['username'];
-
-    $usernames = array();
-
-    // we escape username(s)
-    foreach ($tmp_usernames as $tmp_username) {
-        $tmp_username = trim(str_replace("%", "", $tmp_username));
-
-        if (!empty($tmp_username) && !in_array($tmp_username, $usernames)) {
-            $usernames[] = $tmp_username;
-        }
+    $token = $_POST['csrf_token'] ?? null;
+    if (!is_string($token) || !isset($_SESSION['csrf_token']) || !dalo_check_csrf_token($token)) {
+        user_actions_response(false, 'Invalid CSRF token. Reload the page before trying again.', 403);
     }
+}
+try {
+    $maxUsernameLength = in_array($action, array('refillSessionTime', 'refillSessionTraffic'), true) ? 128 : 64;
+    $usernames = dalo_user_action_names($input['username'] ?? array(), $maxUsernameLength);
+} catch (InvalidArgumentException $error) {
+    user_actions_response(false, 'Invalid or empty username selection.', 400);
+}
 
-    if (count($usernames) == 0) {
-        exit;
-    }
-
-    // we can handle these actions
-    $action = "";
-    if (isset($_GET['userDisable'])) {
-        $action = 'userDisable';
-    } else if (isset($_GET['refillSessionTime'])) {
-        $action = 'refillSessionTime';
-    } else if (isset($_GET['refillSessionTraffic'])) {
-        $action = 'refillSessionTraffic';
-    } else if (isset($_GET['checkDisabled'])) {
-        $action = 'checkDisabled';
-    } else if (isset($_GET['userMail'])) {    // handle "Send Mail" button action
-        $action = 'userMail';
-    } else if (isset($_GET['checkDisabled'])){
-    } else {
-        // this represents the default action
-        $action = 'userEnable';
-    }
+try {
+    $operator_perm_file = ($action === 'checkDisabled') ? 'mng_search' : 'mng_edit';
+    $operator_perm_deny_http_status = 403;
+    include_once('../check_operator_perm.php'); // Independent PDO authorization read.
+    $pdo = dalo_pdo_connect($configValues, $_SESSION['location_name'] ?? 'default');
+    $label = count($usernames) > 1 ? 'users' : 'user';
+    $namesLabel = implode(', ', $usernames);
 
     switch ($action) {
-        case 'userDisable':
         case 'userEnable':
-        case 'userMail':
+            dalo_user_action_toggle($pdo, $configValues, $usernames, $disabled_groupname, false);
+            user_actions_response(true, sprintf('Enabled %s %s.', $label, $namesLabel));
+            break;
+
+        case 'userDisable':
+            $new = dalo_user_action_toggle($pdo, $configValues, $usernames, $disabled_groupname, true);
+            if (!$new) {
+                user_actions_response(false, sprintf('%s %s already disabled.', $label, $namesLabel), 200);
+            }
+            user_actions_response(true, sprintf('Disabled %s %s.', $label, implode(', ', $new)));
+            break;
+
+        case 'checkDisabled':
+            $disabled = dalo_user_action_disabled($pdo, $configValues, $usernames[0], $disabled_groupname);
+            $message = $disabled
+                ? sprintf('Please note that user %s is currently disabled. To enable this user, remove it from the %s profile.',
+                          $usernames[0], $disabled_groupname)
+                : '';
+            user_actions_response(true, $message, 200, $disabled ? 'danger' : 'success', $disabled);
+            break;
+
         case 'refillSessionTime':
         case 'refillSessionTraffic':
-            $operator_perm_file = 'mng_edit';
+            dalo_user_action_refill($pdo, $configValues, $usernames, $action, $_SESSION['operator_user']);
+            user_actions_response(true, sprintf('Session %s for %s %s has been successfully refilled (and billed).',
+                                  $action === 'refillSessionTime' ? 'time' : 'traffic',
+                                  $label, $namesLabel));
             break;
 
-        default:
-            $operator_perm_file = 'mng_search';
-            break;
-    }
-
-    $operator_perm_deny_http_status = 403;
-    include_once('../check_operator_perm.php');
-
-    include('../../../common/includes/db_open.php');
-    include_once('../../include/management/pages_common.php');
-
-    // further escape usernames for safe db queries
-    foreach ($usernames as $i => $username) {
-        $usernames[$i] = $dbSocket->escapeSimple($username);
-    }
-
-    // commonly used in the following lines of code
-    $username_list = "'" . implode("', '", $usernames) . "'";
-
-    // used in presentation
-    $username_list_enc = htmlspecialchars($username_list, ENT_QUOTES, 'UTF-8');
-    $label = (count($usernames) > 1 || count($usernames) == 0) ? "users" : "user";
-
-    switch ($action) {
-
-        default:
-        case 'userEnable':
-            // delete from radusergroup
-            $sql = sprintf("DELETE FROM %s WHERE username IN (%s) AND groupname='%s'",
-                           $configValues['CONFIG_DB_TBL_RADUSERGROUP'], $username_list, $disabled_groupname);
-            $res = $dbSocket->query($sql);
-            // return message
-            if (DB::isError($res)) {
-                $class = "danger";
-                $message = sprintf('Failed to enable %s <strong>%s</strong>.', $label, $username_list_enc);
-            } else {
-                $class = "success";
-                $message = sprintf('Enabled %s <strong>%s</strong>.', $label, $username_list_enc);
-            }
-            break;
-
-        case 'userDisable':
-            // get the list of users already disabled
-            $sql = sprintf("SELECT DISTINCT(username)
-                              FROM %s
-                             WHERE username IN (%s)
-                               AND groupname='%s'",
-                           $configValues['CONFIG_DB_TBL_RADUSERGROUP'], $username_list, $disabled_groupname);
-            $res = $dbSocket->query($sql);
-
-            $already_disabled = array();
-            while ($row = $res->fetchRow()) {
-                $already_disabled[] = $row[0];
-            }
-            // no need to disable already disabled users
-            $to_disable = array();
-            foreach ($usernames as $username) {
-                if (in_array($username, $already_disabled)) {
-                    continue;
-                }
-                $to_disable[] = $username;
-            }
-            if (count($to_disable) > 0) {
-                // this left piece of the query is the same for all
-                $sql0 = sprintf("INSERT INTO %s (username, groupname, priority) VALUES ",
-                                $configValues['CONFIG_DB_TBL_RADUSERGROUP']);
-                $sql_piece_format = "('%s', '%s', -1)";
-                $sql_pieces = array();
-                foreach ($to_disable as $username) {
-                    $sql_pieces[] = sprintf($sql_piece_format, $username, $disabled_groupname);
-                }
-                // actually execute the query for disabling users
-                $sql = $sql0 . implode(", ", $sql_pieces);
-                $res = $dbSocket->query($sql);
-                $to_disable_list = implode(", ", $to_disable);
-                $to_disable_list_enc = htmlspecialchars($to_disable_list, ENT_QUOTES, 'UTF-8');
-                if (DB::isError($res)) {
-                    $class = "danger";
-                    $message = sprintf('Failed to disable %s <strong>%s</strong>.', $label, $to_disable_list_enc);
-                } else {
-                    $class = "success";
-                    $message = sprintf('Disabled %s <strong>%s</strong>.', $label, $to_disable_list_enc);
-                }
-            } else {
-                $already_disabled_enc = htmlspecialchars(implode(", ", $already_disabled), ENT_QUOTES, 'UTF-8');
-                $already_disabled_label = ((count($to_disable) > 1 || count($to_disable) == 0)) ? "users" : "user";
-                $class = "danger";
-                $message = sprintf('%s <strong>%s</strong> already disabled.', $already_disabled_label, $already_disabled_enc);
-            }
-            break;
-//============================
         case 'userMail':
-            // Prepare the SQL query to retrieve user mail information
-            $sql = sprintf(
-                "SELECT radcheck.username, value, email, firstname, lastname
-        FROM %s
-        JOIN %s
-        ON radcheck.username = userinfo.username
-        WHERE radcheck.username IN (%s);",
-                $configValues['CONFIG_DB_TBL_RADCHECK'], // Table containing user credentials
-                $configValues['CONFIG_DB_TBL_DALOUSERINFO'], // Table containing user info
-                $username_list // List of usernames to filter the results
-            );
-
-            // Execute the SQL query
-            $res = $dbSocket->query($sql);
-
-            // Iterate through the results
-            while ($row = $res->fetchRow()) {
-                // Get the recipient's email address and username
-                $recipient_email_address = $row[2]; // Email of the user
-                $recipient_name = $row[0]; // Username of the user
-
-                // Set the subject and body of the email
-                $subject = 'VPN Credentials'; // Subject of the email
+            $recipients = dalo_user_action_mail_rows($pdo, $configValues, $usernames);
+            $sent = 0;
+            $failed = 0;
+            foreach ($recipients as $recipient) {
+                list($username, $password, $email, $firstname, $lastname) = $recipient;
                 $body = sprintf(
                     '<b>VPN credential</b><br>Hello, %s %s!<br>Your login is: %s<br>Your password is: %s<br>VPN Server is: %s<br><br>Best regards, Admin',
-                    $row[3], // First name of the user
-                    $row[4], // Last name of the user
-                    $row[0], // Username
-                    $row[1],  // Password
-                    $configValues['CONFIG_USER_VPN_SERVER']  // VPN Server name/IP
-                );
-
-                // Prepare an empty array for email attachments, if any
-                $attachment = array();
-
-                // Send the email and capture the success status and message
-                list($success, $status) = send_email($configValues, $recipient_email_address, $recipient_name, $subject, $body, $attachment);
-
-                // Determine the class and message based on whether the email was sent successfully
-                if ($success) {
-                    $class = "success"; // Class for successful email sending
-                    $message = $status; // Message indicating success status
-                } else {
-                    $class = "danger"; // Class for failed email sending
-                    $message = $status; // Message indicating failure status
-                }
+                    $firstname, $lastname, $username, $password,
+                    $configValues['CONFIG_USER_VPN_SERVER']);
+                // External SMTP is not transactional; report aggregate partial failures.
+                list($success) = send_email($configValues, $email, $username,
+                                            'VPN Credentials', $body, array());
+                $success ? $sent++ : $failed++;
             }
-            break; // End of the case
-//=======================
-        case 'checkDisabled':
-            $username = $usernames[0];
-            $sql = sprintf("SELECT username FROM %s WHERE username='%s' AND groupname='%s'",
-                           $configValues['CONFIG_DB_TBL_RADUSERGROUP'],
-                           $dbSocket->escapeSimple($username), $disabled_groupname);
-            $res = $dbSocket->query($sql);
-            $numrows = $res->numRows();
-            if ($numrows > 0) {
-                $class = "danger";
-                $message = sprintf('Please note that user <strong>%s</strong> is currently disabled.',
-                                   htmlspecialchars($username, ENT_QUOTES, 'UTF-8'))
-                         . '<br>'
-                         . sprintf('To enable this user, remove it from the <em>%s</em> profile.', $disabled_groupname);
+            if ($sent === 0 && $failed === 0) {
+                user_actions_response(false, 'No email recipients found.', 200);
             }
+            user_actions_response($sent > 0 && $failed === 0,
+                                  sprintf('Emails sent: %d. Failed: %d.', $sent, $failed), 200);
             break;
-
-        case 'userRefillSessionTime':
-            // we update the sessiontime value to be 0 - this will only work though
-            // for accumulative type accounts. For TTF accounts we need to completely
-            // delete the record.
-            // to handle this - as a work-around I've modified the accessperiod sql
-            // counter definition in radiusd.conf to check for records with AcctSessionTime>=1
-            $sql = sprintf("UPDATE %s SET AcctSessionTime=0 WHERE Username IN (%s)",
-                           $configValues['CONFIG_DB_TBL_RADACCT'], $username_list);
-
-            $res = $dbSocket->query($sql);
-
-            $isErr = DB::isError($res);
-
-            if (!$isErr) {
-
-                // take care of recording the billing action in billing_history table
-                foreach ($usernames as $username) {
-                    $sql = sprintf("SELECT ubi.id, ubi.username, ubi.planName, bp.id as PlanID, bp.planTimeRefillCost,
-                                           bp.planTax, ubi.paymentmethod, ubi.cash, ubi.creditcardname, ubi.creditcardnumber,
-                                           ubi.creditcardverification, ubi.creditcardtype, ubi.creditcardexp
-                                      FROM %s AS ubi, %s AS bp
-                                     WHERE ubi.planname = bp.planname AND ubi.username = '%s'",
-                                   $configValues['CONFIG_DB_TBL_DALOUSERBILLINFO'],
-                                   $configValues['CONFIG_DB_TBL_DALOBILLINGPLANS'], $username);
-                    $res = $dbSocket->query($sql);
-                    $numrows = $res->numRows();
-
-                    if ($numrows == 0) {
-                        continue;
-                    }
-
-                    $row = $res->fetchRow(DB_FETCHMODE_ASSOC);
-
-                    $id = $row['id'];
-                    $refillCost = $row['planTimeRefillCost'];
-
-                    $current_datetime = date('Y-m-d H:i:s');
-                    $currBy = $_SESSION['operator_user'];
-
-                    $sql = sprintf("INSERT INTO %s (id, username, planId, billAmount, billAction, billPerformer, billReason,
-                                                    paymentmethod, cash, creditcardname, creditcardnumber, creditcardverification,
-                                                    creditcardtype, creditcardexp, creationdate, creationby)
-                                          VALUES (0, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s',
-                                                  '%s', '%s',  '%s')",
-                                   $configValues['CONFIG_DB_TBL_DALOBILLINGHISTORY'], $username, $row['planName'], $row['planTimeRefillCost'],
-                                   'Refill Session Time', 'daloRADIUS Web Interface', 'Refill Session Time', $row['paymentmethod'],
-                                   $row['cash'], $row['creditcardname'], $row['creditcardnumber'], $row['creditcardverification'],
-                                   $row['creditcardtype'], $row['creditcardexp'], $current_datetime, $currBy);
-                    $res = $dbSocket->query($sql);
-
-
-                    // if the refill cost is anything beyond the amount 0, we create an invoice for it.
-                    if ($refillCost > 0 && !empty($id)) {
-
-                        // if the user id indeed set in the userbillinfo table
-                        include_once('../../include/management/userBilling.php');
-
-                        $invoiceInfo['notes'] = 'refill user account';
-
-                        // calculate tax (planTax is the numerical percentage amount)
-                        $planTax = floatval($row['planTax'] / 100);
-
-                        $invoiceItems[0]['plan_id'] = $row['PlanID'];
-                        $invoiceItems[0]['amount'] = $row['planTimeRefillCost'];
-                        $invoiceItems[0]['tax'] = floatval($row['planTimeRefillCost'] * $planTax);
-                        $invoiceItems[0]['notes'] = 'refill user session time';
-
-                        userInvoiceAdd($id, $invoiceInfo, $invoiceItems);
-                    }
-                }
-            }
-
-            // return message
-            if ($isErr) {
-                $class = "danger";
-                $message = sprintf('Cannot refill session time for %s <strong>%s</strong>', $label, $username_list_enc);
-            } else {
-                $class = "success";
-                $message = sprintf('Session time for %s <strong>%s</strong> has been successfully refilled (and billed).',
-                                   $label, $username_list_enc);
-            }
-
-            break;
-
-         case 'userRefillSessionTraffic':
-            $sql = sprintf("UPDATE %s SET AcctInputOctets=0, AcctOutputOctets=0 WHERE Username IN (%s)",
-                           $configValues['CONFIG_DB_TBL_RADACCT'], $username_list);
-
-            $res = $dbSocket->query($sql);
-
-            $isErr = DB::isError($res);
-
-            if (!$isErr) {
-
-                // take care of recording the billing action in billing_history table
-                foreach ($usernames as $username) {
-
-                    $sql = sprintf("SELECT ubi.id, ubi.username, ubi.planName, bp.id as PlanID, bp.planTax,
-                                           bp.planTrafficRefillCost, ubi.paymentmethod, ubi.cash, ubi.creditcardname,
-                                           ubi.creditcardnumber, ubi.creditcardverification, ubi.creditcardtype, ubi.creditcardexp
-                                      FROM %s AS ubi, %s AS bp
-                                     WHERE ubi.planname = bp.planname AND ubi.username = '%s'",
-                                   $configValues['CONFIG_DB_TBL_DALOUSERBILLINFO'],
-                                   $configValues['CONFIG_DB_TBL_DALOBILLINGPLANS'], $username);
-                    $res = $dbSocket->query($sql);
-                    $numrows = $res->numRows();
-
-                    if ($numrows == 0) {
-                        continue;
-                    }
-
-                    $row = $res->fetchRow(DB_FETCHMODE_ASSOC);
-
-                    $id = $row['id'];
-                    $refillCost = $row['planTrafficRefillCost'];
-
-                    $current_datetime = date('Y-m-d H:i:s');
-                    $currBy = $_SESSION['operator_user'];
-
-                    $sql = sprintf("INSERT INTO %s (id, username, planId, billAmount, billAction, billPerformer, billReason,
-                                                    paymentmethod, cash, creditcardname, creditcardnumber, creditcardverification,
-                                                    creditcardtype, creditcardexp, creationdate, creationby)
-                                          VALUES (0, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s',
-                                                  '%s', '%s',  '%s')",
-                                   $configValues['CONFIG_DB_TBL_DALOBILLINGHISTORY'], $username, $row['planName'], $row['planTimeRefillCost'],
-                                   'Refill Session Traffic', 'daloRADIUS Web Interface', 'Refill Session Traffic', $row['paymentmethod'],
-                                   $row['cash'], $row['creditcardname'], $row['creditcardnumber'], $row['creditcardverification'],
-                                   $row['creditcardtype'], $row['creditcardexp'], $current_datetime, $currBy);
-                    $res = $dbSocket->query($sql);
-
-                    // if the refill cost is anything beyond the amount 0, we create an invoice for it.
-                    if ($refillCost > 0 && !empty($id)) {
-                        // if the user id indeed set in the userbillinfo table
-                        include_once('../../include/management/userBilling.php');
-
-                        $invoiceInfo['notes'] = 'refill user account';
-
-                        // calculate tax (planTax is the numerical percentage amount)
-                        $planTax = floatval($row['planTax'] / 100);
-                        $invoiceItems[0]['plan_id'] = $row['PlanID'];
-                        $invoiceItems[0]['amount'] = $row['planTrafficRefillCost'];
-                        $invoiceItems[0]['tax'] = floatval($row['planTrafficRefillCost'] * $planTax);
-                        $invoiceItems[0]['notes'] = 'refill user session traffic';
-
-                        userInvoiceAdd($id, $invoiceInfo, $invoiceItems);
-
-                    }
-                }
-            }
-
-            // return message
-            if ($isErr) {
-                $class = "danger";
-                $message = sprintf('Cannot refill session traffic for %s <strong>%s</strong>', $label, $username_list_enc);
-            } else {
-                $class = "success";
-                $message = sprintf('Session traffic for %s <strong>%s</strong> has been successfully refilled (and billed).',
-                                   $label, $username_list_enc);
-            }
-
-            break;
-
     }
-
-    include('../../../common/includes/db_close.php');
-
-    // output message
-    if (isset($message) && isset($class)) {
-        $div = sprintf('<div class="alert alert-%s" role="alert">%s</div>', $class, $message);
-        printf("document.getElementById('%s').innerHTML = '%s';", $divContainer, $div);
-    }
+} catch (Throwable $error) {
+    // Driver details (which can contain bound data) must never reach a response or log.
+    user_actions_response(false, 'The action could not be completed. Check user and billing records before trying again.', 500);
 }

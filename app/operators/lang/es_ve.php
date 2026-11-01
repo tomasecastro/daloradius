@@ -161,7 +161,6 @@ $l['all']['RateCost'] = "Costo de la tarifa";
 $l['all']['Billed'] = "Cobrado";
 $l['all']['TotalUsers'] = "Cantidad de usuarios";
 $l['all']['TotalBilled'] = "Usuarios a quienes se les ha cobrado";
-$l['all']['CardBank'] = "Banco emisor";
 $l['all']['Type'] = "Tipo";
 $l['all']['CardBank'] = "Banco emisor";
 $l['all']['MACAddress'] = "Direcci&oacute;n MAC";
@@ -487,6 +486,55 @@ $l['button']['HotspotsComparison'] = "Compara&oacute;n entre hotspots";
 
 $l['button']['CleanupStaleSessions'] = "Limpiar las sesiones vencidas";
 $l['button']['DeleteAccountingRecords'] = "Eliminar registros de conteo";
+$l['maintenance'] = [
+    'title' => 'Mantenimiento de sesiones abiertas',
+    'history' => 'Eliminar historial de contabilidad (todos los registros)',
+    'help' => <<<'HTML'
+    <h2 class="fs-6">Antes de comenzar</h2><p>Un registro de contabilidad abierto no necesariamente está obsoleto. Esta herramienta no comprueba la actividad del usuario ni la conectividad del NAS.</p><h2 class="fs-6">Acciones</h2><ul><li><strong>Cerrar sesiones</strong> conserva el uso registrado y marca las filas seleccionadas como cerradas con <code>Admin-Reset</code>. No desconecta a los usuarios del NAS.</li><li><strong>Eliminar registros</strong> elimina permanentemente las filas abiertas seleccionadas y sus datos de uso.</li></ul><h2 class="fs-6">Alcance y confirmación</h2><p>La coincidencia del nombre de usuario es exacta según la intercalación de la base de datos. Una fecha coincide con las sesiones iniciadas estrictamente antes de la medianoche de esa fecha en la zona horaria del servidor/base de datos de contabilidad.</p><p>Obtenga una vista previa de cada operación antes de confirmarla. Una vista previa contiene como máximo 100 filas, vence después de 10 minutos y puede usarse una vez. Las filas modificadas o que ya no sean elegibles se omiten.</p>
+    HTML,
+    'close' => 'Cerrar sesiones',
+    'delete' => 'Eliminar registros',
+    'details' => 'Detalles',
+    'openWarning' => 'Las sesiones abiertas aún podrían estar activas.',
+    'openHelp' => 'Solo son elegibles los registros cuyo tiempo de finalización falta o es el cero heredado. No se realiza ninguna detección de inactividad.',
+    'dateHelp' => 'El alcance por fecha significa INICIO DE SESIÓN ANTES de la fecha seleccionada, exclusivamente a las 00:00:00 en la zona horaria del servidor/base de datos de contabilidad (no la zona horaria de su navegador). No es un límite de última actividad.',
+    'selectTitle' => 'Seleccionar sesiones',
+    'closeSummary' => 'Conservar los datos de contabilidad y marcar las sesiones seleccionadas como cerradas.',
+    'deleteSummary' => 'Eliminar permanentemente los registros de contabilidad abiertos seleccionados.',
+    'closeHelp' => 'Los registros se cierran ahora con la causa de terminación manual Admin-Reset. Esto no desconecta a los usuarios del NAS. La duración registrada y los contadores de tráfico se conservan sin cambios; no se garantizan futuras actualizaciones de contabilidad.',
+    'deleteHelp' => 'La eliminación es irreversible. El uso registrado se elimina permanentemente y los informes o totales de uso pueden cambiar. Esta herramienta no elimina el historial cerrado.',
+    'scope' => 'Seleccionar alcance',
+    'username' => 'Nombre de usuario',
+    'date' => 'Inicio de sesión antes de la fecha',
+    'value' => 'Nombre de usuario o fecha (YYYY-MM-DD)',
+    'filterHelp' => 'Cambiar este filtro requiere una nueva vista previa.',
+    'filterDetails' => 'La coincidencia del nombre de usuario sigue la intercalación de la base de datos de contabilidad; no se admite la búsqueda con comodines.',
+    'preview' => 'Obtener vista previa de los registros coincidentes',
+    'previewTitle' => 'Vista previa',
+    'previewDetails' => 'Detalles de la vista previa',
+    'count' => '%d registros coincidentes al contar; %d registros en esta vista previa. Máximo %d por operación, ordenados por ID de contabilidad. Solo se pueden modificar los registros mostrados. Repita la vista previa para otro lote; el conteo puede cambiar durante las actualizaciones de contabilidad.',
+    'concurrency' => 'La confirmación vence después de 10 minutos y es de un solo uso. Los registros modificados por actualizaciones Interim/Stop o que ya no sean elegibles se omiten. Los registros que coincidan posteriormente nunca se agregan a esta operación.',
+    'id' => 'ID de contabilidad',
+    'nas' => 'Dirección NAS',
+    'start' => 'Inicio de sesión',
+    'activity' => 'Hora de actualización registrada',
+    'seconds' => 'Segundos registrados',
+    'input' => 'Bytes de entrada registrados',
+    'output' => 'Bytes de salida registrados',
+    'activityHelp' => 'La hora de actualización solo se muestra si el esquema de contabilidad proporciona acctupdatetime. Los valores faltantes se muestran como un guion. Estos valores de la base de datos no demuestran inactividad ni conectividad del NAS.',
+    'closeSelectionOne' => '%d sesión seleccionada',
+    'closeSelectionMany' => '%d sesiones seleccionadas',
+    'deleteSelectionOne' => '%d registro seleccionado',
+    'deleteSelectionMany' => '%d registros seleccionados',
+    'closeConfirmOne' => 'Cerrar %d sesión',
+    'closeConfirmMany' => 'Cerrar %d sesiones',
+    'deleteConfirmOne' => 'Eliminar permanentemente %d registro',
+    'deleteConfirmMany' => 'Eliminar permanentemente %d registros',
+    'empty' => 'No hay registros abiertos coincidentes. No se cambió nada.',
+    'result' => '%s: %d afectados realmente, se omitieron %d registros modificados o no elegibles, %d fallidos. Vuelva a obtener una vista previa antes de cualquier otra operación.',
+    'invalid' => 'Solicitud, filtro, token CSRF o confirmación vencida no válidos. No se cambió nada. Cree una nueva vista previa.',
+    'error' => 'No se pueden leer los registros de contabilidad. No se realizó ninguna operación.',
+];
 
 $l['button']['ListUsers'] = "Listado de usuarios";
 $l['button']['NewUser'] = "Nuevo usuario";
@@ -798,14 +846,12 @@ $l['Intro']['replogssystem.php'] = "Registro del sistema";
 $l['Intro']['replogsradius.php'] = "Registro del servidor RADIUS";
 $l['Intro']['replogsdaloradius.php'] = "Registro de daloRADIUS";
 $l['Intro']['replogsboot.php'] = "Registro de inicio del sistema";
-$l['Intro']['replogs.php'] = "Registros";
 
 $l['Intro']['rephsall.php'] = "Listado de Hotspots";
 $l['Intro']['repmain.php'] = "Reportes";
 $l['Intro']['repstatus.php'] = "Estado";
 $l['Intro']['replogs.php'] = "Registros";
 $l['Intro']['reptopusers.php'] = "Top de usuarios";
-$l['Intro']['repusername.php'] = "Listado de usuarios";
 
 $l['Intro']['mngbatch.php'] = "Crear usuarios por lotes";
 $l['Intro']['mngdel.php'] = "Eliminar usuario";
@@ -1152,7 +1198,7 @@ $l['helpPage']['graphsoveralllogins'] = "Plots a graphical chart of the Login at
 
 
 $l['helpPage']['rephistory'] = "Lista all activity performed on management items and provides information on <br/>
-Creation Date, Creation By as well as Updated Date and Update By history fields";
+Creation Date, Created By as well as Update Date and Updated By history fields";
 $l['helpPage']['replastconnect'] = "Listado des all login attempts to the RADIUS server, both successful and failed logins";
 $l['helpPage']['replogsboot'] = "Monitor Operating System Boot log - equivalent to running the dmesg command.";
 $l['helpPage']['replogsdaloradius'] = "Monitor daloRADIUS's Logfile.";
@@ -1188,7 +1234,6 @@ $l['helpPage']['repstatus'] = "<b>Status</b><br/>
 <h200><b>RADIUS Status</b></h200> - Provides general information about the FreeRADIUS daemon and MySQL Database server";
 $l['helpPage']['reptopusers'] = "Records for top users, those which are listed below have gained the highest consumption of session
 time or bandwidth usage. Listing users of category: ";
-$l['helpPage']['repusername'] = "Records found for user:";
 $l['helpPage']['reponline'] = "
 The following table lists users who are currently connected to
 the system. It is very much possible that there are stale connections,

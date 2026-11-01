@@ -173,16 +173,28 @@ Therefore, the presented steps provide a general outline for enabling communicat
 To proceed with the installation of daloRADIUS, install the Apache HTTP Server and the necessary PHP packages:
 
 ```bash
-dnf install -y httpd php php-cli php-mysqlnd php-mbstring php-gd php-xml php-pear php-process \
+dnf install -y httpd php php-cli php-pdo php-ldap php-mysqlnd php-mbstring php-gd php-xml php-pear php-process \
                git tar unzip wget firewalld policycoreutils-python-utils
 ```
 
-Some PEAR packages used by daloRADIUS are not always available as AlmaLinux 10 RPM packages. Install them with `pear`:
+PEAR Mail and Mail_Mime are still used for notifications and are not always available as AlmaLinux 10 RPM packages. Install those mail packages with `pear`; PEAR DB is not required:
 
 ```bash
 pear channel-update pear.php.net
-pear install DB Mail Mail_Mime
+pear install --alldeps Mail Mail_Mime
 ```
+
+Database access uses native PDO. `php-pdo` and `php-mysqlnd` provide the
+PDO MySQL driver used for MariaDB. Verify it before continuing:
+
+```bash
+php -r 'exit(class_exists("PDO") && in_array("mysql", PDO::getAvailableDrivers(), true) ? 0 : 1);'
+```
+
+If this exits nonzero, enable/install the PDO MySQL extension for the PHP version
+used by both CLI and Apache. Keep `php-pear`, Mail and Mail_Mime for mail delivery;
+do not install the separate PEAR DB package. `--alldeps` retains the optional
+Net_SMTP transport and its dependencies, which are needed for SMTP delivery.
 
 After the installation of the required packages, proceed to download daloRADIUS with git. These commands will create a new directory named `daloradius` in `/var/www`:
 
@@ -242,6 +254,12 @@ Listen 8000
     Require all granted
   </Directory>
 
+  # server-side only: PDF notification templates and helpers, never fetched directly
+  <Directory /var/www/daloradius/app/operators/notifications>
+    AllowOverride None
+    Require all denied
+  </Directory>
+
   <Directory /var/www/daloradius>
     Require all denied
   </Directory>
@@ -258,6 +276,12 @@ Listen 8000
     Options -Indexes +FollowSymLinks
     AllowOverride None
     Require all granted
+  </Directory>
+
+  # server-side only: PDF notification templates and helpers, never fetched directly
+  <Directory /var/www/daloradius/app/users/notifications>
+    AllowOverride None
+    Require all denied
   </Directory>
 
   <Directory /var/www/daloradius>
@@ -340,6 +364,15 @@ httpd -t
 systemctl enable --now httpd
 systemctl restart httpd
 ```
+
+# Operator LDAP authentication
+
+The PHP `php-ldap` package is included above, but LDAP operator login remains
+local by default. To configure LDAP safely, follow
+[`doc/setup/operator-ldap.md`](../setup/operator-ldap.md). Keep
+`CONFIG_OPERATOR_AUTH_LOCAL_ENABLED=true` and a tested local break-glass
+operator until LDAP login, group authorization, and recovery have been
+verified.
 
 # Testing the Infrastructure
 

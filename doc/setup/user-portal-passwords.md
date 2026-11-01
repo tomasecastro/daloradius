@@ -1,0 +1,59 @@
+# User portal password storage and upgrade
+
+User portal credentials are independent from FreeRADIUS authentication credentials. The **Allow cleartext password attributes in db** setting only controls whether cleartext RADIUS attributes such as `Cleartext-Password` may be stored in `radcheck`; it does not control the user portal password.
+
+Newly created or replaced user portal credentials are stored as one-way hashes produced by PHP's `password_hash()` with `PASSWORD_DEFAULT` and are verified with `password_verify()`. Existing installations may temporarily retain legacy plaintext credentials, which are compared exactly until migrated. Stored hashes carry the application marker `$dalo$portal$v1$`, which distinguishes them from legacy plaintext and identifies the verification format independently of PHP's algorithm marker. Operators can replace a portal password, but the stored value is never displayed or pre-filled.
+
+The `$dalo$portal$v1$` namespace is reserved for daloRADIUS-generated values. Before enabling this feature on an existing database, administrators should check for legacy plaintext values that already begin with this marker; a marker followed by a syntactically valid PHP password hash is treated as a stored hash.
+
+## Upgrading an existing installation
+
+Back up the database before upgrading. Apply the schema migration before deploying the updated application:
+
+```sh
+mariadb -u raduser -p raddb \
+  < contrib/db/migrations/2026-09-user-portal-password-hashing.sql
+```
+
+For Docker Compose, run from the directory containing `docker-compose.yml`:
+
+```sh
+docker compose exec -T radius-mysql sh -lc \
+  'mariadb -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
+  < contrib/db/migrations/2026-09-user-portal-password-hashing.sql
+```
+
+The migration widens `userinfo.portalloginpassword` to `VARCHAR(255)`. It is idempotent and does not transform existing values.
+
+After deploying the updated application, inspect how many legacy values remain:
+
+```sh
+php contrib/scripts/maintenance/hash-user-portal-passwords.php --dry-run
+```
+
+Then convert them:
+
+```sh
+php contrib/scripts/maintenance/hash-user-portal-passwords.php
+```
+
+The command processes records in bounded batches, skips empty and already-marked values, and does not print usernames, passwords, hashes, or database debug queries containing them. It is safe to run again. Unmarked values, including strings that happen to look like PHP password hashes, are treated as legacy plaintext. Use `--batch-size=N` to select a batch size between 1 and 1000.
+
+The maintenance command uses PDO in PHP CLI mode. Both simulation and conversion require the existing schema upgrade: the configured user-information base table must have `id` as its sole primary key and password storage with at least 255-character capacity (or suitable unbounded text). An insufficient column is rejected before conversion rather than silently truncating hashes. Keep schema/DDL changes out of the migration window.
+
+Each conversion is an independent, bytewise compare-and-swap against the previously read value. A concurrent reset, deletion or competing migration is counted as `conflicted` instead of being overwritten. There is **no global batch transaction**: a later failure does not undo earlier successful conversions. Review the aggregate `conflicted` and `failed` counters; failures produce exit status 1, while conflicts alone preserve the historical status 0. Dry-run's `would_migrate` is a classification count, not a promise that every value can be hashed successfully.
+
+A legacy plaintext credential is opportunistically migrated after a successful portal login. Run the maintenance command to verify and complete migration across the database. New or changed portal passwords are always hashed.
+
+## Operator behavior
+
+On an existing user's edit page, the portal password field is intentionally empty:
+
+- leave it empty to preserve the current credential;
+- enter a value to replace the credential with a new hash;
+- disabling portal login does not reveal or delete the existing hash;
+- portal login cannot be enabled until a credential exists.
+
+## Rollback
+
+The schema widening is backward compatible, but older daloRADIUS versions compare portal passwords directly in SQL and cannot authenticate records that have already been hashed. After converting values, rolling back the application requires restoring the pre-upgrade database backup or resetting affected portal passwords.

@@ -35,13 +35,14 @@ $autocomplete = (isset($configValues['CONFIG_IFACE_AUTO_COMPLETE']) &&
 global $startdate, $enddate, $acct_custom_query_options_all, $where_field, $operator, $accounting_custom_value,
        $acct_custom_query_options_default, $acct_custom_query_options_all, $sqlfields, $orderBy, $orderType;
 
+
 $components = array();
 
 $components[] = array(
                         "id" => 'random',
                         "name" => "startdate",
                         "type" => "date",
-                        "value" => ((isset($startdate)) ? $startdate : date("Y-m-01")),
+                        "value" => ((!empty($startdate)) ? $startdate : ""),
                         "caption" => t('all','StartingDate'),
                         "tooltipText" => t('Tooltip','Date'),
                         "sidebar" => true
@@ -51,7 +52,7 @@ $components[] = array(
                         "id" => 'random',
                         "name" => "enddate",
                         "type" => "date",
-                        "value" => ((isset($enddate)) ? $enddate : date("Y-m-t")),
+                        "value" => ((!empty($enddate)) ? $enddate : ""),
                         "caption" => t('all','EndingDate'),
                         "tooltipText" => t('Tooltip','Date'),
                         "sidebar" => true
@@ -68,7 +69,7 @@ $components[] = array(
 
 $components[] = array(
                         "id" => 'random',
-                        "caption" => "Operator",
+                        "caption" => t('all', 'Operator'),
                         "type" => "select",
                         "name" => "where_operator",
                         "options" => array("equals", "contains"),
@@ -79,7 +80,7 @@ $components[] = array(
                         "id" => 'random',
                         "type" => "text",
                         "name" => "where_value",
-                        "caption" => "Filter",
+                        "caption" => t('sidebar', 'Filter'),
                         "tooltipText" => t('Tooltip','Filter'),
                         "sidebar" => true,
                         "value" => ((isset($accounting_custom_value)) ? $accounting_custom_value : ""),
@@ -109,7 +110,7 @@ $components[] = array(
 
 $components[] = array(
                         "id" => 'random',
-                        "caption" => "Order Type",
+                        "caption" => t('sidebar', 'OrderType'),
                         "type" => "select",
                         "name" => "orderType",
                         "options" => array("asc" => "Ascending", "desc" => "Descending"),
@@ -121,10 +122,10 @@ $descriptors1[] = array( 'type' => 'form', 'title' => t('button','ProcessQuery')
                          'icon' => 'filter-circle-fill', 'form_components' => $components, );
 
 $sections = array();
-$sections[] = array( 'title' => 'Custom Query', 'descriptors' => $descriptors1 );
+$sections[] = array( 'title' => t('sidebar', 'CustomQuery'), 'descriptors' => $descriptors1 );
 
 // add sections to menu
 $menu = array(
-                'title' => 'Accounting',
+                'title' => t('sidebar', 'Accounting'),
                 'sections' => $sections,
              );

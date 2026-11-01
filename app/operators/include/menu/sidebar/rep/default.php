@@ -52,17 +52,18 @@ $username_input = array(
                        );
 
 $orderBy_options = array(
-                            "Time" => "Time",
-                            "Download" => "Download (bytes)",
-                            "Upload" => "Upload (bytes)",
+                            "Time" => t('all','TotalTime'),
+                            "Download" => t('all','Download'),
+                            "Upload" => t('all','Upload'),
                         );
+
 
 $date_select_components = array();
 $date_select_components[] = array(
                                         "id" => 'random',
                                         "name" => "startdate",
                                         "type" => "date",
-                                        "value" => ((isset($startdate)) ? $startdate : date("Y-01-01")),
+                                        "value" => ((!empty($startdate)) ? $startdate : ""),
                                         "caption" => t('all','StartingDate'),
                                         "tooltipText" => t('Tooltip','Date'),
                                  );
@@ -71,7 +72,7 @@ $date_select_components[] = array(
                                         "id" => 'random',
                                         "name" => "enddate",
                                         "type" => "date",
-                                        "value" => ((isset($enddate)) ? $enddate : date("Y-01-01", mktime(0, 0, 0, date('n') + 1, 1, date('Y')))),
+                                        "value" => ((!empty($enddate)) ? $enddate : ""),
                                         "caption" => t('all','EndingDate'),
                                         "tooltipText" => t('Tooltip','Date'),
                                  );
@@ -103,12 +104,12 @@ $components[] = $username_input;
 
 $components[] = array(
                             "id" => 'random',
-                            "caption" => "RADIUS Reply",
+                            "caption" => t('all', 'RADIUSReply'),
                             "name" => "radiusReply",
                             "type" => "select",
                             "selected_value" => ((isset($radiusReply)) ? $radiusReply : $valid_radiusReplys[0]),
                             "options" => $valid_radiusReplys,
-                            "tooltipText" => "Filter records with the selected RADIUS Reply"
+                            "tooltipText" => t('sidebar', 'FilterRADIUSReply')
                           );
 
 $components = array_merge($components, $date_select_components);
@@ -135,7 +136,7 @@ $components[] = array(
                             "type" => "select",
                             "selected_value" => ((isset($orderBy)) ? $orderBy : array_keys($orderBy_options)[0]),
                             "options" => $orderBy_options,
-                            "tooltipText" => "You can order the results by: " . implode(" or ", array_keys($orderBy_options)),
+                            "tooltipText" => sprintf(t('sidebar', 'OrderResultsBy'), implode(" or ", array_values($orderBy_options))),
                           );
 
 
@@ -147,11 +148,11 @@ $descriptors2[] = array( 'type' => 'link', 'label' => t('button','History'),
                          'href' => 'rep-history.php', 'icon' => 'clock-history', );
 
 $sections = array();
-$sections[] = array( 'title' => 'User Reports', 'descriptors' => $descriptors1 );
-$sections[] = array( 'title' => 'Other Reports', 'descriptors' => $descriptors2 );
+$sections[] = array( 'title' => t('sidebar', 'UserReports'), 'descriptors' => $descriptors1 );
+$sections[] = array( 'title' => t('sidebar', 'OtherReports'), 'descriptors' => $descriptors2 );
 
 // add sections to menu
 $menu = array(
-                'title' => 'Reports',
+                'title' => t('sidebar', 'Reports'),
                 'sections' => $sections,
              );

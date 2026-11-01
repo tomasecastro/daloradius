@@ -31,7 +31,7 @@
     // validate (or pre-validate) parameters
     $goto_stats = (array_key_exists('goto_stats', $_GET) && isset($_GET['goto_stats']));
 
-    $type = (array_key_exists('type', $_GET) && isset($_GET['type']) &&
+    $type = (array_key_exists('type', $_GET) && isset($_GET['type']) && is_string($_GET['type']) &&
              in_array(strtolower($_GET['type']), array( "daily", "monthly", "yearly" )))
           ? strtolower($_GET['type']) : "daily";
 
@@ -46,7 +46,7 @@
     $title = t('Intro','graphsoveralllogins.php');
     $help = t('helpPage','graphsoveralllogins');
 
-    print_html_prologue($title, $langCode);
+    print_html_prologue($title, $langCode, array(), array("static/js/chart.umd.min.js", "static/js/daloradius-charts.js"));
 
     print_title_and_help($title, $help);
     
@@ -65,7 +65,7 @@
     // tab 0
     open_tab($navkeys, 0, true);
 
-    $img_format = '<div class="my-3 text-center"><img src="%s" alt="%s"></div>';
+    $img_format = '<div class="my-3 text-center" style="height:384px"><canvas data-chart-source="%s" aria-label="%s" role="img"></canvas></div>';
     $src = sprintf("library/graphs/overall_users_data.php?category=login&type=%s", $type);
     $alt = sprintf("Your %s login/hit statistics", $type);
     printf($img_format, $src, $alt);

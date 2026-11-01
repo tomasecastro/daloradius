@@ -618,8 +618,7 @@ INSERT INTO `operators_acl_files` (`file`, `category`, `section`) VALUES
 ('rep_stat_server', 'Reporting', 'Status'),
 ('rep_stat_services', 'Reporting', 'Status'),
 ('rep_stat_ups', 'Reporting', 'Status'),
-('rep_topusers', 'Reporting', 'Core'),
-('rep_username', 'Reporting', 'Core');
+('rep_topusers', 'Reporting', 'Core');
 
 /*!40000 ALTER TABLE `operators_acl_files` ENABLE KEYS */;
 UNLOCK TABLES;
@@ -634,7 +633,9 @@ SET character_set_client = utf8mb4;
 CREATE TABLE `operators` (
   `id` INT(32) NOT NULL AUTO_INCREMENT,
   `username` VARCHAR(32) NOT NULL,
-  `password` VARCHAR(95) NOT NULL,
+  `password` VARCHAR(95) DEFAULT NULL,
+  `auth_source` VARCHAR(16) NOT NULL DEFAULT 'local',
+  `external_id` VARCHAR(255) DEFAULT NULL,
   `firstname` VARCHAR(32) NOT NULL,
   `lastname` VARCHAR(32) NOT NULL,
   `title` VARCHAR(32) NOT NULL,
@@ -658,6 +659,7 @@ CREATE TABLE `operators` (
   `totp_confirmed_at` DATETIME DEFAULT NULL,
   `totp_recovery_codes` TEXT DEFAULT NULL,
   PRIMARY KEY  (`id`),
+  UNIQUE KEY `operators_external_id_uq` (`external_id`),
   KEY `username` (`username`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4;
 SET character_set_client = @saved_cs_client;
@@ -889,7 +891,7 @@ CREATE TABLE `userinfo` (
   `zip` VARCHAR(200) DEFAULT NULL,
   `notes` VARCHAR(200) DEFAULT NULL,
   `changeuserinfo` VARCHAR(128) DEFAULT NULL,
-  `portalloginpassword` VARCHAR(128) DEFAULT '',
+  `portalloginpassword` VARCHAR(255) DEFAULT '',
   `enableportallogin` INT(32) DEFAULT '0',
   `creationdate` DATETIME DEFAULT '0000-00-00 00:00:00',
   `creationby` VARCHAR(128) DEFAULT NULL,
@@ -951,3 +953,21 @@ CREATE INDEX idx_radpostauth_authdate ON radpostauth (authdate);
 CREATE INDEX idx_radacct_status_start ON radacct (acctstoptime, acctstarttime);
 CREATE INDEX idx_radacct_top_users ON radacct (acctstarttime, username, acctsessiontime, acctinputoctets, acctoutputoctets);
 CREATE INDEX idx_radcheck_username_attr ON radcheck (username, attribute);
+
+-- UNIT-040: durable IPN deduplication. No callback bodies or credentials.
+-- Apply before deploying the migrated Chilli PayPal callbacks.
+CREATE TABLE IF NOT EXISTS `chilli_paypal_events` (
+  `event_key` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `payment_key` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL,
+  `subscription_key` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL,
+  `event_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `order_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `event_type` VARCHAR(40) NOT NULL,
+  `event_status` VARCHAR(32) NOT NULL,
+  `event_date` DATETIME NOT NULL,
+  `processed_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`event_key`),
+  UNIQUE KEY `completed_payment` (`payment_key`),
+  KEY `order_events` (`order_hash`, `event_date`),
+  KEY `subscription_events` (`subscription_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

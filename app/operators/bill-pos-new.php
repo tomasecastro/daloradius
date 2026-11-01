@@ -21,29 +21,42 @@
  *********************************************************************************************************
  */
 
-    include("library/checklogin.php");
+    include_once implode(DIRECTORY_SEPARATOR, [ __DIR__, '..', 'common', 'includes', 'config_read.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'checklogin.php' ]);
     $operator = $_SESSION['operator_user'];
 
-    include('../common/includes/config_read.php');
-    include('library/check_operator_perm.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'check_operator_perm.php' ]);
 
-    include_once("lang/main.php");
-    include_once("../common/includes/validation.php");
-    include("../common/includes/layout.php");
-    include_once("include/management/functions.php");
-    include('include/management/pages_common.php');
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LANG'], 'main.php' ]);
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'validation.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'layout.php' ]);
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'functions.php' ]);
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'pages_common.php' ]);
+    require_once implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'pdo_connection.php' ]);
+    require_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'attributes.php' ]);
+    require_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'pos_provision.php' ]);
 
     // init logging variables
     $log = "visited page: ";
     $logAction = "";
     $logDebugSQL = "";
 
-    // if cleartext passwords are not allowed,
-    // we remove Cleartext-Password from the $valid_passwordTypes array
-    if (isset($configValues['CONFIG_DB_PASSWORD_ENCRYPTION']) &&
-        strtolower(trim($configValues['CONFIG_DB_PASSWORD_ENCRYPTION'])) !== 'yes') {
-        $valid_passwordTypes = array_values(array_diff($valid_passwordTypes, array("Cleartext-Password")));
+    // Validate scalar form fields before the legacy display-value normalization.
+    $invalidRequest = false;
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        foreach (array('address', 'bi_address', 'bi_billdue', 'bi_billstatus', 'bi_cash', 'bi_changeuserbillinfo', 'bi_city', 'bi_company', 'bi_contactperson', 'bi_country', 'bi_coupon', 'bi_creditcardexp', 'bi_creditcardname', 'bi_creditcardnumber', 'bi_creditcardtype', 'bi_creditcardverification', 'bi_email', 'bi_emailinvoice', 'bi_faxinvoice', 'bi_lastbill', 'bi_lead', 'bi_nextbill', 'bi_nextinvoicedue', 'bi_notes', 'bi_ordertaker', 'bi_paymentmethod', 'bi_phone', 'bi_postalinvoice', 'bi_state', 'bi_zip', 'changeUserInfo', 'city', 'company', 'country', 'department', 'email', 'enableUserPortalLogin', 'firstname', 'homephone', 'lastname', 'mobilephone', 'notes', 'password', 'passwordType', 'planName', 'portalLoginPassword', 'state', 'username', 'workphone', 'zip') as $field) {
+            if (isset($_POST[$field]) && !is_string($_POST[$field])) {
+                $invalidRequest = true;
+                $_POST[$field] = '';
+            }
+        }
+        if (isset($_POST['profiles']) && !is_array($_POST['profiles'])) {
+            $invalidRequest = true;
+            $_POST['profiles'] = array();
+        }
     }
+
+    $valid_passwordTypes = dalo_filter_password_types($valid_passwordTypes);
 
     $username = (array_key_exists('username', $_POST) && isset($_POST['username']))
               ? trim(str_replace("%", "", $_POST['username'])) : "";
@@ -55,7 +68,7 @@
     $profiles = (array_key_exists('profiles', $_POST) && isset($_POST['profiles'])) ? $_POST['profiles'] : array();
 
     $planName = (array_key_exists('planName', $_POST) && isset($_POST['planName']))
-              ? trim(str_replace("%", "", $_POST['planName'])) : "";
+              ? trim($_POST['planName']) : "";
 
     // user info variables
     $firstname = (array_key_exists('firstname', $_POST) && isset($_POST['firstname'])) ? $_POST['firstname'] : "";
@@ -74,13 +87,16 @@
     $notes = (array_key_exists('notes', $_POST) && isset($_POST['notes'])) ? $_POST['notes'] : "";
 
     // first we check user portal login password
-    $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) && !empty(trim($_POST['portalLoginPassword'])))
+    $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) &&
+                               dalo_portal_password_is_acceptable($_POST['portalLoginPassword']))
                             ? trim($_POST['portalLoginPassword']) : "";
 
+    $portal_access_valid = dalo_portal_access_is_valid($_POST);
+
     // these are forced to 0 (disabled) if user portal login password is empty
-    $ui_changeuserinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
+    $ui_changeuserinfo = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
                        ? '1' : '0';
-    $ui_enableUserPortalLogin = (!empty($ui_PortalLoginPassword) && isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
+    $ui_enableUserPortalLogin = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
                               ? '1' : '0';
 
     // billing info variables
@@ -118,182 +134,20 @@
     $bi_billdue = (array_key_exists('bi_billdue', $_POST) && isset($_POST['bi_billdue'])) ? $_POST['bi_billdue'] : "";
 
     // this is forced to 0 (disabled) if user portal login password is empty
-    $bi_changeuserbillinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
+    $bi_changeuserbillinfo = (dalo_portal_password_is_present($ui_PortalLoginPassword) && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
                            ? '1' : '0';
 
-    function addPlanProfile($dbSocket, $username, $planName) {
-
-        global $logDebugSQL;
-        global $configValues;
-
-        // search to see if the plan is associated with any profiles
-        $sql = "SELECT profile_name FROM ".
-                $configValues['CONFIG_DB_TBL_DALOBILLINGPLANSPROFILES'].
-                " WHERE plan_name='$planName'";
-        $res = $dbSocket->getCol($sql);
-        // $res is an array of all profiles associated with this plan
-
-        // if the profile list for this plan isn't empty, we associate it with the user
-        if (count($res) != 0) {
-
-            // if profiles are associated with this plan, loop through each and add a usergroup entry for each
-            foreach($res as $profile_name) {
-                $sql = "INSERT INTO ".$configValues['CONFIG_DB_TBL_RADUSERGROUP']." (UserName,GroupName,priority) ".
-                    " VALUES ('".$dbSocket->escapeSimple($username)."','$profile_name','0')";
-                $res = $dbSocket->query($sql);
-            }
-
-            return true;
-
-        }
-
-        return false;
-
-    }
-
-
-    function addUserBillInfo($dbSocket, $username) {
-
-        global $planName;
-        global $bi_contactperson;
-        global $bi_company;
-        global $bi_email;
-        global $bi_phone;
-        global $bi_address;
-        global $bi_city;
-        global $bi_state;
-        global $bi_country;
-        global $bi_zip;
-        global $bi_paymentmethod;
-        global $bi_cash;
-        global $bi_creditcardname;
-        global $bi_creditcardnumber;
-        global $bi_creditcardexp;
-        global $bi_creditcardverification;
-        global $bi_creditcardtype;
-        global $bi_notes;
-        global $bi_lead;
-        global $bi_coupon;
-        global $bi_ordertaker;
-        global $bi_billstatus;
-        global $bi_lastbill;
-        global $bi_nextbill;
-        global $bi_nextinvoicedue;
-        global $bi_billdue;
-        global $bi_postalinvoice;
-        global $bi_faxinvoice;
-        global $bi_emailinvoice;
-        global $bi_changeuserbillinfo;
-        global $logDebugSQL;
-        global $configValues;
-
-        $currDate = date('Y-m-d H:i:s');
-        $currBy = $_SESSION['operator_user'];
-
-        $sql = "SELECT * FROM ".$configValues['CONFIG_DB_TBL_DALOUSERBILLINFO'].
-                        " WHERE username='".$dbSocket->escapeSimple($username)."'";
-        $res = $dbSocket->query($sql);
-        $logDebugSQL .= $sql . "\n";
-
-        // if there were no records for this user present in the userbillinfo table
-        if ($res->numRows() == 0) {
-
-            // calculate the nextbill and other related billing information
-            $sql = "SELECT * FROM ".$configValues['CONFIG_DB_TBL_DALOBILLINGPLANS'].
-                            " WHERE planName='".$dbSocket->escapeSimple($planName)."' LIMIT 1";
-            $res = $dbSocket->query($sql);
-            $row = $res->fetchRow(DB_FETCHMODE_ASSOC);
-            $logDebugSQL .= $sql . "\n";
-
-            $planRecurring = $row['planRecurring'];
-            $planRecurringPeriod = $row['planRecurringPeriod'];
-            $planRecurringBillingSchedule = $row['planRecurringBillingSchedule'];
-
-
-            // initialize next bill date string (Y-m-d style)
-            $nextBillDate = "0000-00-00";
-
-            // get next billing date
-            if ($planRecurring == "Yes") {
-                $nextBillDate = getNextBillingDate($planRecurringBillingSchedule, $planRecurringPeriod);
-            }
-
-
-            // if $bi_nextbill was not set to anything (empty)
-            if (empty($bi_nextbill))
-                $bi_nextbill = $nextBillDate;
-
-
-
-            // insert user billing information table
-            $sql = "INSERT INTO ".$configValues['CONFIG_DB_TBL_DALOUSERBILLINFO'].
-                    " (id, planname, username, contactperson, company, email, phone, ".
-                    " address, city, state, country, zip, ".
-                    " paymentmethod, cash, creditcardname, creditcardnumber, creditcardverification, creditcardtype, creditcardexp, ".
-                    " notes, changeuserbillinfo, ".
-                    " `lead`, coupon, ordertaker, billstatus, lastbill, nextbill, nextinvoicedue, billdue, postalinvoice, faxinvoice, emailinvoice, ".
-                    " creationdate, creationby, updatedate, updateby) ".
-                    " VALUES (0, '".$dbSocket->escapeSimple($planName)."',
-                    '".$dbSocket->escapeSimple($username)."', '".$dbSocket->escapeSimple($bi_contactperson)."', '".
-                    $dbSocket->escapeSimple($bi_company)."', '".$dbSocket->escapeSimple($bi_email)."', '".
-                    $dbSocket->escapeSimple($bi_phone)."', '".$dbSocket->escapeSimple($bi_address)."', '".
-                    $dbSocket->escapeSimple($bi_city)."', '".$dbSocket->escapeSimple($bi_state)."', '".
-                    $dbSocket->escapeSimple($bi_country)."', '".
-                    $dbSocket->escapeSimple($bi_zip)."', '".$dbSocket->escapeSimple($bi_paymentmethod)."', '".
-                    $dbSocket->escapeSimple($bi_cash)."', '".$dbSocket->escapeSimple($bi_creditcardname)."', '".
-                    $dbSocket->escapeSimple($bi_creditcardnumber)."', '".$dbSocket->escapeSimple($bi_creditcardverification)."', '".
-                    $dbSocket->escapeSimple($bi_creditcardtype)."', '".$dbSocket->escapeSimple($bi_creditcardexp)."', '".
-                    $dbSocket->escapeSimple($bi_notes)."', '".
-                    $dbSocket->escapeSimple($bi_changeuserbillinfo)."', '".
-                    $dbSocket->escapeSimple($bi_lead)."', '".$dbSocket->escapeSimple($bi_coupon)."', '".
-                    $dbSocket->escapeSimple($bi_ordertaker)."', '".$dbSocket->escapeSimple($bi_billstatus)."', '".
-                    $dbSocket->escapeSimple($bi_lastbill)."', '".$dbSocket->escapeSimple($bi_nextbill)."', '".
-                    $dbSocket->escapeSimple($bi_nextinvoicedue)."', '".$dbSocket->escapeSimple($bi_billdue)."', '".
-                    $dbSocket->escapeSimple($bi_postalinvoice)."', '".$dbSocket->escapeSimple($bi_faxinvoice)."', '".
-                    $dbSocket->escapeSimple($bi_emailinvoice).
-                                    "', '$currDate', '$currBy', NULL, NULL)";
-            $res = $dbSocket->query($sql);
-            $logDebugSQL .= $sql . "\n";
-
-            $user_id = $dbSocket->getOne( "SELECT LAST_INSERT_ID() FROM `".$configValues['CONFIG_DB_TBL_DALOUSERBILLINFO']."`" );
-            return $user_id;
-
-        } //FIXME:
-          //if the user already exist in userinfo then we should somehow alert the user
-          //that this has happened and the administrator/operator will take care of it
-
-    }
-
-
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        if (array_key_exists('csrf_token', $_POST) && isset($_POST['csrf_token']) && dalo_check_csrf_token($_POST['csrf_token'])) {
-
-            // required later
-            $current_datetime = date('Y-m-d H:i:s');
-            $currBy = $operator;
-
-            include('../common/includes/db_open.php');
-
-            // check if username is already present in the radcheck table
-            $userExists = user_exists($dbSocket, $username);
-
-            if ($userExists) {
-                $failureMsg = "user already exist in database: <b> $username </b>";
-                $logAction .= "Failed adding new user already existing in database [$username] on page: ";
+        if (isset($_POST['csrf_token']) && is_string($_POST['csrf_token']) &&
+            dalo_check_csrf_token($_POST['csrf_token'])) {
+            if ($invalidRequest || !$portal_access_valid || $username === '' ||
+                $password === '' || $passwordType === '') {
+                $failureMsg = 'Username, password, password type or submitted field is invalid';
+                $logAction .= 'Failed adding POS user with invalid input on page: ';
             } else {
-
-                // username and password are required
-                if (empty($username) || empty($password)) {
-                    $failureMsg = "username or password are empty";
-                    $logAction .= "Failed adding (possible empty user/pass) new user [$username] on page: ";
-                } else {
-
-                    // we "inject" the prepared password/auth attribute in the $_POST array.
-                    // handleAttributes() - called later - will take care of it.
-                    $_POST['injected_attribute'] = array( $passwordType, $password, ':=', 'check' );
-
-                    include("library/attributes.php");
-
+                $current_datetime = date('Y-m-d H:i:s');
+                $currBy = $operator;
+                $_POST['injected_attribute'] = array($passwordType, $password, ':=', 'check');
                     $skipList = array(
                                         "username", "password", "passwordType", "profiles", "planName",
                                         "macaddress", "pincode", "submit", "firstname", "lastname", "email",
@@ -307,11 +161,6 @@
                                         "enableUserPortalLogin", "csrf_token", "submit"
                                      );
 
-                    $attributesCount = handleAttributes($dbSocket, $username, $skipList);
-
-                    $groupsCount = insert_multiple_user_group_mappings($dbSocket, $username, $profiles);
-
-                    // adding user info
                     $params = array(
                                         "firstname" => $firstname,
                                         "lastname" => $lastname,
@@ -334,44 +183,45 @@
                                         "creationby" => $currBy,
                                    );
 
-                    $addedUserInfo = (add_user_info($dbSocket, $username, $params)) ? "stored" : "nothing to store";
-
-                    addPlanProfile($dbSocket, $username, $planName);
-                    $userbillinfo_id = addUserBillInfo($dbSocket, $username);
-
-                    // create any invoices if required (meaning, if a plan was chosen)
-                    if ($planName) {
-                        include_once("include/management/userBilling.php");
-
-                        // get plan information
-                        $sql = "SELECT id, planCost, planSetupCost, planTax FROM ".$configValues['CONFIG_DB_TBL_DALOBILLINGPLANS'].
-                            " WHERE planName='".$dbSocket->escapeSimple($planName)."' LIMIT 1";
-                        $res = $dbSocket->query($sql);
-                        $row = $res->fetchRow(DB_FETCHMODE_ASSOC);
-
-                        // calculate tax (planTax is the numerical percentage amount)
-                        $planCost = is_numeric($row['planCost']) ? (float)$row['planCost'] : 0.0;
-                        $planTax = is_numeric($row['planTax']) ? (float)$row['planTax'] : 0.0;
-                        $calcTax = $planCost * ($planTax / 100);
-                        
-                        $invoiceItems[0]['plan_id'] = $row['id'];
-                        $invoiceItems[0]['amount'] = $planCost;
-                        $invoiceItems[0]['tax'] = $calcTax;
-                        $invoiceItems[0]['notes'] = 'charge for plan service';
-
-                        if (isset($row['planSetupCost']) && ($row['planSetupCost'] != '') ) {
-                            $planSetupCost = is_numeric($row['planSetupCost']) ? (float)$row['planSetupCost'] : 0.0;
-                            $calcTax = $planSetupCost * ($planTax / 100);
-                            $invoiceItems[1]['plan_id'] = $row['id'];
-                            $invoiceItems[1]['amount'] = $planSetupCost;
-                            $invoiceItems[1]['tax'] = $calcTax;
-                            $invoiceItems[1]['notes'] = 'charge for plan setup fee (one time)';
-                        }
-
-                        userInvoiceAdd($userbillinfo_id, array(), $invoiceItems);
-
-                    }
-
+                    $billing = array(
+                        'contactperson' => $bi_contactperson,
+                        'company' => $bi_company,
+                        'email' => $bi_email,
+                        'phone' => $bi_phone,
+                        'address' => $bi_address,
+                        'city' => $bi_city,
+                        'state' => $bi_state,
+                        'country' => $bi_country,
+                        'zip' => $bi_zip,
+                        'paymentmethod' => $bi_paymentmethod,
+                        'cash' => $bi_cash,
+                        'creditcardname' => $bi_creditcardname,
+                        'creditcardnumber' => $bi_creditcardnumber,
+                        'creditcardverification' => $bi_creditcardverification,
+                        'creditcardtype' => $bi_creditcardtype,
+                        'creditcardexp' => $bi_creditcardexp,
+                        'notes' => $bi_notes,
+                        'lead' => $bi_lead,
+                        'coupon' => $bi_coupon,
+                        'ordertaker' => $bi_ordertaker,
+                        'billstatus' => $bi_billstatus,
+                        'lastbill' => $bi_lastbill,
+                        'nextbill' => $bi_nextbill,
+                        'nextinvoicedue' => $bi_nextinvoicedue,
+                        'billdue' => $bi_billdue,
+                        'postalinvoice' => $bi_postalinvoice,
+                        'faxinvoice' => $bi_faxinvoice,
+                        'emailinvoice' => $bi_emailinvoice,
+                        'changeuserbillinfo' => $bi_changeuserbillinfo,
+                    );
+                try {
+                    $manualProfiles = dalo_plan_profiles_from_post($profiles);
+                    $attributes = dalo_pos_attributes_from_post($_POST, $skipList, $valid_ops);
+                    $pdo = dalo_pdo_connect($configValues, $_SESSION['location_name'] ?? 'default');
+                    list($attributesCount, $groupsCount, $userbillinfo_id, $invoice_id) =
+                        dalo_pos_provision($pdo, $configValues, $username, $planName, $manualProfiles,
+                                           $attributes, $params, $billing, $current_datetime, $currBy);
+                    $addedUserInfo = 'stored';
                     $successMsg = sprintf(
                         'Inserted new user <strong>%s</strong>: <a href="bill-pos-edit.php?username=%s" title="Edit">%s</a>',
                         $username_enc,
@@ -395,19 +245,22 @@
                     $_SESSION['notification'] = array( 'username' => $username, 'type' => 'user-welcome' );
 
                     $logAction .= sprintf("Successfully inserted new user [%s] on page: ", $username);
+                } catch (DomainException $error) {
+                    $failureMsg = 'User already exists in database';
+                    $logAction .= 'Failed adding existing POS user on page: ';
+                } catch (InvalidArgumentException $error) {
+                    $failureMsg = 'Invalid user, plan, profile or attribute';
+                    $logAction .= 'Failed adding POS user with invalid selection on page: ';
+                } catch (Throwable $error) {
+                    $failureMsg = 'Failed to provision user and billing records';
+                    $logAction .= 'Failed adding POS user on page: ';
                 }
             }
-
-            include('../common/includes/db_close.php');
-
         } else {
-            // csrf
-            $failureMsg = "CSRF token error";
+            $failureMsg = 'CSRF token error';
             $logAction .= "$failureMsg on page: ";
         }
     }
-
-    include_once('../common/includes/config_read.php');
 
     $hiddenPassword = (strtolower($configValues['CONFIG_IFACE_PASSWORD_HIDDEN']) == "yes")
                     ? 'password' : 'text';
@@ -417,10 +270,7 @@
     $extra_css = array();
 
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/ajaxGeneric.js",
         "static/js/productive_funcs.js",
-        "static/js/dynamic_attributes.js",
     );
 
     $title = t('Intro','billposnew.php');
@@ -430,11 +280,11 @@
 
     print_title_and_help($title, $help);
 
-    include_once('include/management/actionMessages.php');
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'actionMessages.php' ]);
 
     if (!isset($successMsg)) {
 
-        include_once('include/management/populate_selectbox.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'populate_selectbox.php' ]);
 
         // set navbar stuff
         $navkeys = array( 'AccountInfo', 'UserInfo', 'BillingInfo' );
@@ -506,7 +356,7 @@
                                         "options" => $options,
                                         "multiple" => true,
                                         "size" => 5,
-                                        "selected_value" => ((isset($failureMsg)) ? $groups : ""),
+                                        "selected_value" => ((isset($failureMsg)) ? $profiles : ""),
                                         "tooltipText" => t('Tooltip','groupTooltip')
                                      );
 
@@ -521,16 +371,14 @@
         // open 1-st tab
         open_tab($navkeys, 1);
 
-        //~ $customApplyButton = sprintf('<input type="submit" name="submit" value="%s" class="button">', t('buttons','apply'));
-        include_once('include/management/userinfo.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'userinfo.php' ]);
 
         close_tab($navkeys, 1);
 
         // open 2-nd tab
         open_tab($navkeys, 2);
 
-        //~ $customApplyButton = sprintf('<input type="submit" name="submit" value="%s" class="button">', t('buttons','apply'));
-        include_once('include/management/userbillinfo.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'userbillinfo.php' ]);
 
         close_tab($navkeys, 2);
 
@@ -561,7 +409,7 @@
 
     print_back_to_previous_page();
 
-    include('include/config/logging.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_CONFIG'], 'logging.php' ]);
     print_footer_and_html_epilogue();
 
 ?>

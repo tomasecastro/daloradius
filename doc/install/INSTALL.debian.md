@@ -208,11 +208,27 @@ Therefore, the presented steps provide a general outline for enabling communicat
 
 To proceed with the installation of daloRADIUS, execute the following command which is required to install the Apache 2 web server and the necessary packages:
 ```bash
-apt --no-install-recommends install apache2 php libapache2-mod-php \
-                                    php-mysql php-zip php-mbstring php-common php-curl \
-                                    php-gd php-db php-mail php-mail-mime \
+apt --no-install-recommends install apache2 php php-cli libapache2-mod-php \
+                                    php-mysql php-mbstring php-common php-curl \
+                                    php-gd php-ldap php-mail php-mail-mime php-net-smtp \
                                     mariadb-client freeradius-utils rsyslog
 ```
+
+Database access uses native PDO, not PEAR DB. `php-mysql` supplies the
+`pdo_mysql` driver used for MariaDB; `php-cli` supports the maintenance scripts
+and the following verification. PEAR Mail and Mail_Mime remain required for
+notification delivery and are independent of database access. `php-net-smtp` is
+installed explicitly because `--no-install-recommends` otherwise omits the SMTP
+transport recommended by `php-mail`.
+
+Verify the driver before continuing:
+
+```bash
+php -r 'exit(class_exists("PDO") && in_array("mysql", PDO::getAvailableDrivers(), true) ? 0 : 1);'
+```
+
+If this exits nonzero, enable/install the PDO MySQL extension for the PHP version
+used by both CLI and Apache before continuing.
 
 After the installation of the required packages, proceed to download the daloRADIUS package with git by executing the following commands. These commands will create a new directory named daloradius in `/var/www`:
 ```bash
@@ -270,6 +286,12 @@ cat <<EOF > /etc/apache2/sites-available/operators.conf
     Require all granted
   </Directory>
 
+  # server-side only: PDF notification templates and helpers, never fetched directly
+  <Directory \${DALORADIUS_ROOT_DIRECTORY}/app/operators/notifications>
+    AllowOverride None
+    Require all denied
+  </Directory>
+
   <Directory \${DALORADIUS_ROOT_DIRECTORY}>
     Require all denied
   </Directory>
@@ -291,6 +313,12 @@ cat <<EOF > /etc/apache2/sites-available/users.conf
     Options -Indexes +FollowSymLinks
     AllowOverride None
     Require all granted
+  </Directory>
+
+  # server-side only: PDF notification templates and helpers, never fetched directly
+  <Directory \${DALORADIUS_ROOT_DIRECTORY}/app/users/notifications>
+    AllowOverride None
+    Require all denied
   </Directory>
 
   <Directory \${DALORADIUS_ROOT_DIRECTORY}>
@@ -370,6 +398,15 @@ a2ensite operators.conf users.conf
 systemctl enable apache2
 systemctl restart apache2
 ```
+
+# Operator LDAP authentication
+
+The PHP `php-ldap` package is included above, but LDAP operator login remains
+local by default. To configure LDAP safely, follow
+[`doc/setup/operator-ldap.md`](../setup/operator-ldap.md). Keep
+`CONFIG_OPERATOR_AUTH_LOCAL_ENABLED=true` and a tested local break-glass
+operator until LDAP login, group authorization, and recovery have been
+verified.
 
 # Testing the Infrastructure
 

@@ -21,54 +21,24 @@
  *********************************************************************************************************
  */
 
+require_once __DIR__ . '/json_info.php';
 include('../checklogin.php');
+include_once dirname(__DIR__, 3) . '/common/includes/config_read.php';
 $operator_perm_file = 'mng_rad_attributes_list';
 $operator_perm_deny_http_status = 403;
 include('../check_operator_perm.php');
-
-
-// attribute and divContainer are required
-if (array_key_exists('attribute', $_GET) && isset($_GET['attribute']) &&
-    array_key_exists('divContainer', $_GET) && isset($_GET['divContainer'])) {
-    
-    // divContainer id must begin with a letter ([A-Za-z]) and may be followed by any number of letters,
-    // digits ([0-9]), hyphens ("-"), underscores ("_").
-    if (!preg_match("/^[A-Za-z][A-Za-z0-9_-]+$/", $_GET['divContainer'])) {
-        exit;
-    }
-    
-    $divContainer = $_GET['divContainer'];
-    $attribute = str_replace("%", "", trim($_GET['attribute']));
-
-    // at the moment we have only one action
-    $action = "";
-    if (isset($_GET['retAttributeInfo'])) {
-        $action = 'retAttributeInfo';
-    } else {
-        $action = 'retAttributeInfo';
-    }
-
-    include('../../../common/includes/db_open.php');
-
-    switch ($action) {
-        
-        default:
-        case 'retAttributeInfo':
-            $sql = sprintf("SELECT RecommendedTooltip FROM %s WHERE Attribute='%s'",
-                           $configValues['CONFIG_DB_TBL_DALODICTIONARY'], $dbSocket->escapeSimple($attribute));
-            $tooltip = trim($dbSocket->getOne($sql));
-            $tooltip = (empty($tooltip)) ? "(n/a)" : addslashes(htmlspecialchars($tooltip, ENT_QUOTES, 'UTF-8'));
-            
-            echo <<<EOF
-
-    document.getElementById('$divContainer').innerHTML = 'Description: <span style="font-weight: normal">$tooltip</span>';
-
-EOF;
-            break;
-    }
-
-    include('../../../common/includes/db_close.php');
-
+require_once dirname(__DIR__) . '/dictionary_pages_pdo.php';
+$value = dalo_info_parameter('attribute');
+try {
+    dalo_dictionary_text($value, 64, true);
+    $pdo = dalo_pdo_connect($configValues, $_SESSION['location_name'] ?? 'default');
+    $table = dalo_dictionary_table($configValues);
+    $stmt = $pdo->prepare("SELECT RecommendedTooltip FROM $table WHERE Attribute=:attribute LIMIT 1");
+    $stmt->execute(array(':attribute'=>$value));
+    $tooltip = trim((string)$stmt->fetchColumn());
+    dalo_info_response(['description' => $tooltip === '' ? '(n/a)' : $tooltip]);
+} catch (InvalidArgumentException $e) {
+    dalo_info_response(['error' => 'Missing or invalid parameter.'], 400);
+} catch (Throwable $e) {
+    dalo_info_response(['error' => 'Unable to load attribute information.'], 500);
 }
-
-?>

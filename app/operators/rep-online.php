@@ -24,17 +24,28 @@
     include_once implode(DIRECTORY_SEPARATOR, [ __DIR__, '..', 'common', 'includes', 'config_read.php' ]);
     include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'checklogin.php' ]);
     $operator = $_SESSION['operator_user'];
-
     include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'check_operator_perm.php' ]);
+    require_once __DIR__ . '/library/operator_reports_pdo.php';
+    unset($_SESSION['reportExport'], $_SESSION['reportTable'], $_SESSION['reportQuery'], $_SESSION['reportType']);
+    try {
+        dalo_accounting_validate_request($_GET);
+        foreach (array('batch_name','radiusReply') as $key) {
+            if (isset($_GET[$key])) { dalo_accounting_scalar($_GET, $key); }
+        }
+    } catch (Throwable $exception) {
+        http_response_code(400); exit('Invalid operator report filters');
+    }
+    if (isset($_REQUEST['page']) && !is_string($_REQUEST['page'])) { $_REQUEST['page'] = '1'; }
+
     include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LANG'], 'main.php' ]);
     include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'validation.php' ]);
     include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'layout.php' ]);
 
+    unset($_SESSION['reportExport']);
 
     // validate this parameter before including menu
-    $username = (array_key_exists('username', $_GET) && !empty(str_replace("%", "", trim($_GET['username']))))
-              ? str_replace("%", "", trim($_GET['username'])) : "";
-    $username_enc = (!empty($username)) ? htmlspecialchars($username, ENT_QUOTES, 'UTF-8') : "";
+    $username = dalo_accounting_scalar($_GET, 'username');
+    $username_enc = ($username !== '') ? htmlspecialchars($username, ENT_QUOTES, 'UTF-8') : "";
 
     // the array $cols has multiple purposes:
     // - its keys (when non-numerical) can be used
@@ -45,26 +56,26 @@
                    'selected',
                    'username' => t('all','Username'),
                    t('all','Name'),
-                   'framedipaddress' => t('all','Framed IP Address',),
-                   'calledstationid' => t('all','Calling Station ID',),
+                   'framedipaddress' => t('all','Framed IP Address'),
+                   'calledstationid' => t('all','Calling Station ID'),
+                   'nasshortname' => t('all','Nas'),
+                   'hotspot' => t('all','HotSpot'),
                    'acctstarttime' => t('all','StartTime'),
                    'acctsessiontime' => t('all','TotalTime'),
-                   'hotspot' => t('all','HotSpot'),
-                   'nasshortname' =>  t('all','NasShortname'),
                    t('all','TotalTraffic')
                  );
     $colspan = count($cols);
-    $half_colspan = intval($colspan / 2);
 
     $param_cols = array();
     foreach ($cols as $k => $v) { if (!is_int($k)) { $param_cols[$k] = $v; } }
+    $param_col_keys = array_keys($param_cols);
 
     // validating user passed parameters
 
     // whenever possible we use a whitelist approach
     $orderBy = (array_key_exists('orderBy', $_GET) && isset($_GET['orderBy']) &&
-                in_array($_GET['orderBy'], array_keys($param_cols)))
-             ? $_GET['orderBy'] : array_keys($param_cols)[0];
+                in_array($_GET['orderBy'], $param_col_keys))
+             ? $_GET['orderBy'] : $param_col_keys[0];
 
     $orderType = (array_key_exists('orderType', $_GET) && isset($_GET['orderType']) &&
                   in_array(strtolower($_GET['orderType']), array( "desc", "asc" )))
@@ -73,7 +84,7 @@
     // init logging variables
     $log = "visited page: ";
     $logQuery = "performed query for ";
-    if (!empty($username)) {
+    if ($username !== '') {
          $logQuery .= "username(s) starting with [$username] ";
     } else {
         $logQuery .= "all usernames ";
@@ -85,8 +96,10 @@
     $extra_css = array();
 
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/ajaxGeneric.js",
+        "static/js/chart.umd.min.js",
+        "static/js/daloradius-charts.js",
+        "static/js/request.js",
+        "static/js/readonly_info.js",
     );
 
     $title = t('Intro','reponline.php');
@@ -113,53 +126,24 @@
     open_tab($navkeys, 0, true);
 
     include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'pages_common.php' ]);
-    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_open.php' ]);
 
-    // ra is a placeholder in the SQL statements below
-    // except for $usernameLastConnect, which has been only partially escaped,
-    // all other query parameters have been validated earlier.
-    $sql_WHERE = " WHERE (ra.AcctStopTime IS NULL OR ra.AcctStopTime='0000-00-00 00:00:00') ";
-    if (!empty($username)) {
-        $sql_WHERE .= sprintf(" AND ra.username LIKE '%%%s%%' ", $dbSocket->escapeSimple($username));
-    }
-
-    // setup php session variables for exporting
-    $_SESSION['reportTable'] = $configValues['CONFIG_DB_TBL_RADACCT'];
-    $_SESSION['reportQuery'] = $sql_WHERE;
-    $_SESSION['reportType'] = "reportsOnlineUsers";
-
-    //orig: used as maethod to get total rows - this is required for the pages_numbering.php page
-    $sql = "SELECT ra.username AS username,
-                   ra.framedipaddress AS framedipaddress,
-                   ra.callingstationid AS callingstationid,
-                   ra.acctstarttime AS starttime,
-                   ra.acctsessiontime AS sessiontime,
-                   ra.nasipaddress AS nasipaddress,
-                   ra.calledstationid AS calledstationid,
-                   ra.acctsessionid AS sessionid,
-                   ra.acctinputoctets AS upload,
-                   ra.acctoutputoctets AS download,
-                   hs.name AS hotspot,
-                   rn.shortname AS nasshortname,
-                   rn.id AS nasid,
-                   ui.firstname AS firstname,
-                   ui.lastname AS lastname
-              FROM %s AS ra LEFT JOIN %s AS hs ON hs.mac=ra.calledstationid
-                            LEFT JOIN %s AS rn ON rn.nasname=ra.nasipaddress
-                            LEFT JOIN %s AS ui ON ra.username=ui.username";
-
-    $sql = sprintf($sql, $configValues['CONFIG_DB_TBL_RADACCT'],
-                         $configValues['CONFIG_DB_TBL_DALOHOTSPOTS'],
-                         $configValues['CONFIG_DB_TBL_RADNAS'],
-                         $configValues['CONFIG_DB_TBL_DALOUSERINFO']) . $sql_WHERE;
-    $res = $dbSocket->query($sql);
-    $numrows = $res->numRows();
+    // The selected-backend provider binds the validated scalar filters.
+    $_SESSION['reportType'] = 'reportsOnlineUsers';
+    $_SESSION['reportExport'] = array('source'=>'rep-online','type'=>'reportsOnlineUsers','filters'=>array('username'=>$username));
+    $reportPDO = null;
+    $reportRows = array();
+    $numrows = 0;
+    try {
+        $reportPDO = dalo_pdo_connect($configValues, $_SESSION['location_name'] ?? 'default');
+        list($reportSQL, $reportBindings) = dalo_operator_query('rep-online', array('username'=>$username), $configValues);
+        $numrows = dalo_accounting_count($reportPDO, $reportSQL, $reportBindings, $configValues);
+    } catch (Throwable $exception) { dalo_accounting_failure($exception); }
 
     if ($numrows > 0) {
         /* START - Related to pages_numbering.php */
 
         // when $numrows is set, $maxPage is calculated inside this include file
-        // must be included after opendb because it needs to read
+        // must follow configuration initialization because it needs to read
         // the CONFIG_IFACE_TABLES_LISTING variable from the config file
         include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'pages_numbering.php' ]);
 
@@ -169,15 +153,18 @@
         /* END */
 
         // we execute and log the actual query
-        $sql .= sprintf(" ORDER BY %s %s LIMIT %s, %s", $orderBy, $orderType, $offset, $rowsPerPage);
-        $res = $dbSocket->query($sql);
-        $logDebugSQL = "$sql;\n";
+        try {
+            $reportRows = dalo_operator_rows($reportPDO, $reportSQL, $reportBindings, 'rep-online',
+                $orderBy, $orderType, (int)$offset, (int)$rowsPerPage, false);
+        } catch (Throwable $exception) { dalo_accounting_failure($exception); }
+        $per_page_numrows = count($reportRows);
 
-        $per_page_numrows = $res->numRows();
+
+
 
         // the partial query is built starting from user input
         // and for being passed to setupNumbering and setupLinks functions
-        $partial_query_string = (!empty($username_enc) ? "&username=" . urlencode($username_enc) : "");
+        $partial_query_string = ($username_enc !== '' ? "&username=" . urlencode($username) : "");
 
         // this can be passed as form attribute and
         // printTableFormControls function parameter
@@ -185,7 +172,16 @@
 
         $descriptors = array();
 
-        $descriptors['start'] = array( 'common_controls' => 'clearSessionsUsers[]' );
+        $descriptors['start'] = array(
+                                        'common_controls' => 'clearSessionsUsers[]',
+                                        'additional_controls' => array(
+                                            array(
+                                                'onclick' => "removeCheckbox('listall','$action')",
+                                                'label' => t('button','ClearSessions'),
+                                                'class' => 'btn-danger',
+                                            ),
+                                        ),
+                                     );
 
         $params = array(
                             'num_rows' => $numrows,
@@ -199,11 +195,7 @@
 
 
         $descriptors['end'] = array();
-        $descriptors['end'][] = array(
-                                        'onclick' => "location.href='include/management/fileExport.php?reportFormat=csv'",
-                                        'label' => 'CSV Export',
-                                        'class' => 'btn-light',
-                                     );
+        if (!isset($failureMsg)) { $descriptors['end'][] = get_csv_export_control(); }
         print_table_prologue($descriptors);
 
         $form_descriptor = array( 'form' => array( 'action' => $action, 'method' => 'POST', 'name' => 'listall' ), );
@@ -219,16 +211,13 @@
 
         // table content
         $count = 0;
-        while ($row = $res->fetchRow()) {
-            $rowlen = count($row);
+        foreach ($reportRows as $row) {
+            $rawIdentity = array_map(static function ($value) { return (string)($value ?? ''); }, $row);
 
             // escape row elements
-            for ($i = 0; $i < $rowlen; $i++) {
-                $row[$i] = htmlspecialchars($row[$i], ENT_QUOTES, 'UTF-8');
+            foreach ($row as $i => $value) {
+                $row[$i] = htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
             }
-
-            //~ username, framedipaddress, callingstationid, starttime, sessiontime, nasipaddress,
-            //~ calledstationid, sessionid, upload, download, hotspot, nasshortname, firstname, lastname
 
             list(
                     $this_username, $this_framedipaddress, $this_callingstationid, $this_starttime, $this_sessiontime,
@@ -236,14 +225,15 @@
                     $this_hotspot, $this_nasshortname, $this_nasid, $this_firstname, $this_lastname
                 ) = $row;
 
-            // validation
             $this_sessiontime = time2str($this_sessiontime);
-            $this_hotspot = (!empty($this_hotspot)) ? $this_hotspot : "(n/d)";
-            $this_name = $this_firstname . "<br>" . $this_lastname;
-            $this_nasid = intval($this_nasid);
+            $this_hotspot = (!empty($this_hotspot)) ? $this_hotspot : t('all','NotDefined');
+            $this_name = (!empty((trim($this_firstname) . trim($this_lastname)))) ? $this_firstname . "<br>" . $this_lastname : t('all','NotDefined');
 
-            $tooltip1 = "(n/d)";
-            $tmp = $this_upload + $this_download;
+            $this_nasid = intval($this_nasid);
+            $nas_tooltip = get_nas_tooltip_str($this_nasshortname, $this_nasipaddress);
+
+            $tooltip1 = t('all','NotDefined');
+            $tmp = (is_numeric($this_upload) ? $this_upload : 0) + (is_numeric($this_download) ? $this_download : 0);
             if ($tmp > 0) {
                 $this_upload = toxbyte($this_upload);
                 $this_download = toxbyte($this_download);
@@ -260,13 +250,13 @@
             }
 
             // tooltip and ajax stuff
-            $custom_attributes = sprintf("Acct-Session-Id=%s,Framed-IP-Address=%s", $this_sessionid, $this_framedipaddress);
+            $custom_attributes = sprintf("Acct-Session-Id=%s,Framed-IP-Address=%s", $rawIdentity[7], $rawIdentity[1]);
             $tooltip_disconnect_href = sprintf("config-maint-disconnect-user.php?username=%s&nas_id=nas-%d&customAttributes=%s",
-                                               urlencode($this_username), $this_nasid, urlencode($custom_attributes));
+                                               urlencode($rawIdentity[0]), $this_nasid, urlencode($custom_attributes));
 
             $ajax_id = "divContainerUserInfo_" . $count;
-            $param = sprintf('username=%s', urlencode($this_username));
-            $onclick = "ajaxGeneric('library/ajax/user_info.php','retBandwidthInfo','$ajax_id','$param')";
+            $param = sprintf('username=%s', urlencode($rawIdentity[0]));
+            $onclick = "daloInfo.user('$ajax_id','$param')";
             $tooltip2 = array(
                                 'subject' => $this_username,
                                 'onclick' => $onclick,
@@ -274,8 +264,8 @@
                                 'actions' => array(),
                              );
 
-            $tooltip2['actions'][] = array( 'href' => sprintf('rep-online.php?username=%s', urlencode($this_username)), 'label' => "Filter this user", );
-            $tooltip2['actions'][] = array( 'href' => sprintf('mng-edit.php?username=%s', urlencode($this_username)), 'label' => t('Tooltip','UserEdit'), );
+            $tooltip2['actions'][] = array( 'href' => sprintf('rep-online.php?username=%s', urlencode($rawIdentity[0])), 'label' => "Filter this user", );
+            $tooltip2['actions'][] = array( 'href' => sprintf('mng-edit.php?username=%s', urlencode($rawIdentity[0])), 'label' => t('Tooltip','UserEdit'), );
             $tooltip2['actions'][] = array( 'href' => $tooltip_disconnect_href, 'label' => t('all','Disconnect'), );
 
             // create tooltip
@@ -289,7 +279,7 @@
             // define table row
             $table_row = array(
                                 $checkbox, $tooltip2, $this_name, $this_framedipaddress, $this_callingstationid,
-                                $this_starttime, $this_sessiontime, $this_hotspot, $this_nasshortname, $tooltip1
+                                $nas_tooltip, $this_hotspot, $this_starttime, $this_sessiontime, $tooltip1
                               );
 
             // print table row
@@ -315,17 +305,16 @@
         printLinks($links, $drawNumberLinks);
 
     } else {
-        $failureMsg = "Nothing to display";
-        include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'actionMessages.php' ]);
+        $failureMsg = $failureMsg ?? "Nothing to display";
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'actionMessages.php' ]);
     }
 
-    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'db_close.php' ]);
 
     close_tab($navkeys, 0);
 
-    $img_format = '<div class="my-3 text-center"><img src="%s" alt="%s"></div>';
+    $img_format = '<div class="my-3 text-center" style="height:384px"><canvas data-chart-source="%s" aria-label="%s" role="img"></canvas></div>';
     open_tab($navkeys, 1);
-    printf($img_format, "library/graphs/online_users.php", "Online users");
+    printf($img_format, "library/graphs/online_users.php", t('button', 'OnlineUsers'));
     close_tab($navkeys, 1);
 
     open_tab($navkeys, 2);
@@ -335,6 +324,14 @@
     // close tab wrapper
     close_tab_wrapper();
 
+    if (isset($failureMsg)) {
+        include_once $configValues['OPERATORS_INCLUDE_MANAGEMENT'] . '/actionMessages.php';
+    }
+
     include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_CONFIG'], 'logging.php' ]);
 
+    if (isset($failureMsg) || empty($numrows)) {
+        unset($_SESSION['reportExport'], $_SESSION['reportTable'], $_SESSION['reportQuery'], $_SESSION['reportType']);
+    }
+    unset($reportPDO, $reportRows);
     print_footer_and_html_epilogue();

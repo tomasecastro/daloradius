@@ -31,6 +31,7 @@ include_once("../common/includes/validation.php");
 
 global $username, $startdate, $enddate, $ipaddress, $nasipaddress;
 
+
 include_once("include/management/populate_selectbox.php");
 $menu_usernames = get_users('CONFIG_DB_TBL_RADACCT');
 $show = count($menu_usernames) > 0;
@@ -73,7 +74,7 @@ if ($show) {
                             "id" => 'random',
                             "name" => "startdate",
                             "type" => "date",
-                            "value" => ((isset($startdate)) ? $startdate : date("Y-m-01")),
+                            "value" => ((!empty($startdate)) ? $startdate : ""),
                             "caption" => t('all','StartingDate'),
                             "tooltipText" => t('Tooltip','Date'),
                          );
@@ -82,7 +83,7 @@ if ($show) {
                             "id" => 'random',
                             "name" => "enddate",
                             "type" => "date",
-                            "value" => ((isset($enddate)) ? $enddate : date("Y-m-t")),
+                            "value" => ((!empty($enddate)) ? $enddate : ""),
                             "caption" => t('all','EndingDate'),
                             "tooltipText" => t('Tooltip','Date'),
                          );
@@ -99,7 +100,7 @@ $components[] = array(
                         "name" => "ipaddress",
                         "type" => "text",
                         "value" => ((isset($ipaddress)) ? $ipaddress : ""),
-                        "caption" => "IP address",
+                        "caption" => t('all', 'IPAddress'),
                         "tooltipText" => t('Tooltip','IPAddress'),
                         "sidebar" => true,
                         "pattern" => trim(LOOSE_IP_REGEX, "/"),
@@ -116,7 +117,7 @@ $components[] = array(
                         "name" => "nasipaddress",
                         "type" => "text",
                         "value" => ((isset($nasipaddress)) ? $nasipaddress : ""),
-                        "caption" => "NAS IP address",
+                        "caption" => t('all', 'NASIPAddress'),
                         "tooltipText" => t('all','NASIPAddress'),
                         "sidebar" => true,
                         "pattern" => trim(LOOSE_IP_REGEX, "/"),
@@ -132,11 +133,11 @@ $descriptors1[] = array( 'type' => 'link', 'label' => t('button','ActiveRecords'
                          'icon' => 'table', );
 
 $sections = array();
-$sections[] = array( 'title' => 'Users Accounting', 'descriptors' => $descriptors1 );
+$sections[] = array( 'title' => t('sidebar', 'UsersAccounting'), 'descriptors' => $descriptors1 );
 
 
 // add sections to menu
 $menu = array(
-                'title' => 'Accounting',
+                'title' => t('sidebar', 'Accounting'),
                 'sections' => $sections,
              );

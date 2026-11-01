@@ -21,214 +21,122 @@
  *********************************************************************************************************
  */
 
-    include("library/checklogin.php");
+    include_once implode(DIRECTORY_SEPARATOR, [ __DIR__, '..', 'common', 'includes', 'config_read.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'checklogin.php' ]);
     $operator = $_SESSION['operator_user'];
     $operator_id = $_SESSION['operator_id'];
 
-    include('library/check_operator_perm.php');
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'check_operator_perm.php' ]);
 
     // init logging variables
     $log = "visited page: ";
     $logAction = "";
     $logDebugSQL = "";
-    
-    include_once('../common/includes/config_read.php');
-    
-    include('../common/includes/db_open.php');
 
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $operator_username = (array_key_exists('operator_username', $_POST) && !empty(trim(str_replace("%", "", $_POST['operator_username']))))
-                           ? trim(str_replace("%", "", $_POST['operator_username'])) : "";
-    } else {
-        $operator_username = (array_key_exists('operator_username', $_REQUEST) && !empty(trim(str_replace("%", "", $_REQUEST['operator_username']))))
-                           ? trim(str_replace("%", "", $_REQUEST['operator_username'])) : "";
+    require_once implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'pdo_connection.php' ]);
+    require_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LIBRARY'], 'operator_edit.php' ]);
+
+    // GET and POST select one unambiguous operator by bound username; never read its password.
+    $request = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
+    $operator_username = isset($request['operator_username']) && is_string($request['operator_username'])
+                       ? trim($request['operator_username']) : '';
+    if ($operator_username === '' || preg_match_all('/./us', $operator_username) > 32) {
+        $operator_username = '';
     }
-    $operator_username_enc = (!empty($operator_username)) ? htmlspecialchars($operator_username, ENT_QUOTES, 'UTF-8') : "";
-    
-    
-    // check if this operator exists
-    $sql = sprintf("SELECT id FROM %s WHERE username='%s'", $configValues['CONFIG_DB_TBL_DALOOPERATORS'],
-                                                            $dbSocket->escapeSimple($operator_username));
-    $res = $dbSocket->query($sql);
-    $logDebugSQL .= "$sql;\n";
-
-    $exists = ($res->numRows() == 1);
-    
-    if (!$exists) {
-        // we reset the operator username if it does not exist
-        $operator_username = "";
-    } else {
-        // if the operator exists, we get its current id
-        $curr_operator_id = intval($res->fetchRow()[0]);
-    }
-    
-    //feed the sidebar variables
-    $edit_operator_username = $operator_username_enc;
-    
-    // from now on we can assume $operator_username is valid
-
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        
-        if (array_key_exists('csrf_token', $_POST) && isset($_POST['csrf_token']) && dalo_check_csrf_token($_POST['csrf_token'])) {
-        
-            if (!empty($operator_username)) {
-                $current_datetime = date('Y-m-d H:i:s');
-                $currBy = $_SESSION['operator_user'];
-                
-                $operator_password = (array_key_exists('operator_password', $_POST) && isset($_POST['operator_password']))
-                                   ? trim($_POST['operator_password']) : "";
-
-                $firstname = (array_key_exists('firstname', $_POST) && isset($_POST['firstname'])) ? trim($_POST['firstname']) : "";
-                $lastname = (array_key_exists('lastname', $_POST) && isset($_POST['lastname'])) ? trim($_POST['lastname']) : "";
-                $title = (array_key_exists('title', $_POST) && isset($_POST['title'])) ? trim($_POST['title']) : "";
-                $department = (array_key_exists('department', $_POST) && isset($_POST['department'])) ? trim($_POST['department']) : "";
-                $company = (array_key_exists('company', $_POST) && isset($_POST['company'])) ? trim($_POST['company']) : "";
-                $phone1 = (array_key_exists('phone1', $_POST) && isset($_POST['phone1'])) ? trim($_POST['phone1']) : "";
-                $phone2 = (array_key_exists('phone2', $_POST) && isset($_POST['phone2'])) ? trim($_POST['phone2']) : "";
-                $email1 = (array_key_exists('email1', $_POST) && isset($_POST['email1'])) ? trim($_POST['email1']) : "";
-                $email2 = (array_key_exists('email2', $_POST) && isset($_POST['email2'])) ? trim($_POST['email2']) : "";
-                $messenger1 = (array_key_exists('messenger1', $_POST) && isset($_POST['messenger1'])) ? trim($_POST['messenger1']) : "";
-                $messenger2 = (array_key_exists('messenger2', $_POST) && isset($_POST['messenger2'])) ? trim($_POST['messenger2']) : "";
-                $notes = (array_key_exists('notes', $_POST) && isset($_POST['notes'])) ? trim($_POST['notes']) : "";
-                
-                if (empty($operator_password)) {
-                    $sql = sprintf("SELECT password FROM %s WHERE id=%d",
-                                   $configValues['CONFIG_DB_TBL_DALOOPERATORS'], $curr_operator_id);
-                    $operator_password_hash = $dbSocket->getOne($sql);
-                    $logDebugSQL .= "$sql;\n";
-                } else {
-                    $operator_password_hash = password_hash($operator_password, PASSWORD_DEFAULT);
-                }
-
-                // update operator data into the database
-                $sql = sprintf("UPDATE %s SET password='%s', firstname='%s', lastname='%s', title='%s', department='%s',
-                                              company='%s', phone1='%s', phone2='%s', email1='%s', email2='%s', messenger1='%s',
-                                              messenger2='%s', updatedate='%s', updateby='%s'
-                                 WHERE username='%s'",
-                               $configValues['CONFIG_DB_TBL_DALOOPERATORS'], $dbSocket->escapeSimple($operator_password_hash),
-                               $dbSocket->escapeSimple($firstname), $dbSocket->escapeSimple($lastname), $dbSocket->escapeSimple($title),
-                               $dbSocket->escapeSimple($department), $dbSocket->escapeSimple($company), $dbSocket->escapeSimple($phone1),
-                               $dbSocket->escapeSimple($phone2), $dbSocket->escapeSimple($email1), $dbSocket->escapeSimple($email2),
-                               $dbSocket->escapeSimple($messenger1), $dbSocket->escapeSimple($messenger2), $current_datetime,
-                               $dbSocket->escapeSimple($currBy), $dbSocket->escapeSimple($operator_username));
-                $res = $dbSocket->query($sql);
-                $logDebugSQL .= "$sql;\n";
-
-                if (array_key_exists('reset_totp', $_POST) && $_POST['reset_totp'] === '1') {
-                    $sql = sprintf("UPDATE %s SET totp_enabled=0, totp_secret=NULL, totp_last_counter=NULL, totp_confirmed_at=NULL, totp_recovery_codes=NULL, updatedate='%s', updateby='%s' WHERE id=%d",
-                                   $configValues['CONFIG_DB_TBL_DALOOPERATORS'], $current_datetime,
-                                   $dbSocket->escapeSimple($currBy), $curr_operator_id);
-                    $dbSocket->query($sql);
-                    $logDebugSQL .= "$sql;\n";
-                }
-
-                // insert operators acl for this operator
-                foreach ($_POST as $field => $access ) {
-                    
-                    if (!preg_match('/^ACL_/', $field)) { 
-                          continue;
-                        }
-
-                    
-                    $file = substr($field, 4);
-                    
-                    $sql = sprintf("SELECT id FROM %s WHERE operator_id=%d AND file='%s'",
-                                   $configValues['CONFIG_DB_TBL_DALOOPERATORS_ACL'],
-                                   $curr_operator_id, $dbSocket->escapeSimple($file));
-                    $res = $dbSocket->query($sql);
-                    $logDebugSQL .= "$sql;\n";
-                    
-                    $numrows = $res->numRows();
-                    
-                    if ($numrows > 0) {
-                        $sql = sprintf("UPDATE %s SET access='%s'
-                                         WHERE file='%s' AND operator_id=%d", 
-                                       $configValues['CONFIG_DB_TBL_DALOOPERATORS_ACL'],
-                                       $dbSocket->escapeSimple($access),
-                                       $dbSocket->escapeSimple($file), $curr_operator_id);
-                    } else {
-                        $sql = sprintf("INSERT INTO %s (operator_id, file, access)
-                                                VALUES (%d, '%s', '%s')",
-                                       $configValues['CONFIG_DB_TBL_DALOOPERATORS_ACL'], $curr_operator_id,
-                                       $dbSocket->escapeSimple($file), $dbSocket->escapeSimple($access));
-                    }
-                    
-                    $res = $dbSocket->query($sql);
-                    $logDebugSQL .= "$sql;\n";
-
-                } // foreach
-            
-                $successMsg = "Updated settings for: <b> $operator_username_enc </b>";
-                $logAction .= "Successfully updated settings for operator user [$operator_username] on page: ";
-            }
-        
-        } else {
-            $operator_username = "";
-            $failureMsg = "CSRF token error";
-            $logAction .= "$failureMsg on page: ";
+    $operatorRow = null;
+    if ($operator_username !== '') {
+        try {
+            $pdo = dalo_pdo_connect($configValues, $_SESSION['location_name'] ?? 'default');
+            $operatorRow = dalo_operator_edit_row($pdo, $configValues, $operator_username);
+        } catch (Throwable $error) {
+            $failureMsg = 'Unable to load this operator';
+            $logAction .= 'Failed loading operator on page: ';
         }
     }
-
-    if (empty($operator_username)) {
-        $failureMsg = "the operator's username you have specified is empty or invalid";
-        $logAction .= "Failed updating settings for operator [empty or invalid username] on page: ";
-    } else {
-        /* fill-in all the operator settings */
-
-        $sql = sprintf("SELECT id, password, firstname, lastname, title, department, company, phone1, phone2,
-                               email1, email2, messenger1, messenger2, notes, lastlogin,
-                               creationdate, creationby, updatedate, updateby, totp_enabled, totp_confirmed_at
-                          FROM %s
-                         WHERE username='%s'", $configValues['CONFIG_DB_TBL_DALOOPERATORS'],
-                                               $dbSocket->escapeSimple($operator_username));
-        $res = $dbSocket->query($sql);
-        $logDebugSQL .= "$sql;\n";
-        
-        list(
-                $curr_operator_id, $operator_password, $operator_firstname, $operator_lastname,
-                $operator_title, $operator_department, $operator_company, $operator_phone1, $operator_phone2,
-                $operator_email1, $operator_email2, $operator_messenger1, $operator_messenger2, $operator_notes,
-                $operator_lastlogin, $operator_creationdate, $operator_creationby, $operator_updatedate, $operator_updateby,
-                $operator_totp_enabled, $operator_totp_confirmed_at
-            ) = $res->fetchRow();
+    if (!$operatorRow) {
+        $operator_username = '';
     }
-
-    include('../common/includes/db_close.php');
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $operatorRow) {
+        if (!isset($_POST['csrf_token']) || !is_string($_POST['csrf_token']) ||
+            !dalo_check_csrf_token($_POST['csrf_token'])) {
+            $failureMsg = 'CSRF token error';
+            $logAction .= 'CSRF token error on page: ';
+            $operator_username = '';
+        } else {
+            try {
+                $input = dalo_operator_edit_input($_POST);
+                $operatorRow = dalo_operator_edit_apply($pdo, $configValues, $operator_username,
+                                                        $input, $operator);
+                $escapedUsername = htmlspecialchars($operator_username, ENT_QUOTES, 'UTF-8');
+                $successMsg = "Updated settings for: <b> $escapedUsername </b>";
+                $logAction .= 'Successfully updated operator settings on page: ';
+                // SQL parameters, identity values and hashes are never logged.
+                $logDebugSQL .= 'Updated operator profile and ACLs using PDO;';
+            } catch (InvalidArgumentException $error) {
+                $failureMsg = $error->getMessage();
+                $logAction .= 'Rejected operator edit on page: ';
+            } catch (DomainException $error) {
+                $failureMsg = $error->getMessage();
+                $logAction .= 'Stale operator edit on page: ';
+            } catch (Throwable $error) {
+                $failureMsg = 'Failed to update this operator; no changes saved';
+                $logAction .= 'Failed updating operator on page: ';
+            }
+        }
+    }
+    if ($operator_username === '') {
+        if (!isset($failureMsg)) {
+            $failureMsg = "the operator's username you have specified is empty or invalid";
+            $logAction .= 'Invalid operator username on page: ';
+        }
+    } else {
+        $curr_operator_id = (int) $operatorRow['id'];
+        $operator_auth_source = operator_normalize_auth_source($operatorRow['auth_source']) ?? 'local';
+        $current_auth_source = $operator_auth_source;
+        $current_external_id = operator_normalize_external_id($operatorRow['external_id']);
+        foreach (array('firstname','lastname','title','department','company','phone1','phone2',
+                       'email1','email2','messenger1','messenger2','notes', 'lastlogin',
+                       'creationdate','creationby','updatedate','updateby','totp_enabled',
+                       'totp_confirmed_at') as $field) {
+            ${'operator_' . $field} = $operatorRow[$field];
+        }
+    }
+    $operator_username_enc = htmlspecialchars($operator_username, ENT_QUOTES, 'UTF-8');
+    $edit_operator_username = $operator_username_enc;
 
     $hiddenPassword = (strtolower($configValues['CONFIG_IFACE_PASSWORD_HIDDEN']) == "yes")
                     ? 'password' : 'text';
 
-    include_once("lang/main.php");
-    
-    include("../common/includes/layout.php");
+    include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_LANG'], 'main.php' ]);
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['COMMON_INCLUDES'], 'layout.php' ]);
 
     // print HTML prologue
     $extra_css = array();
-    
+
     $extra_js = array(
         "static/js/productive_funcs.js",
     );
-    
+
     $title = t('Intro','configoperatorsedit.php');
     $help = t('helpPage','configoperatorsedit');
-    
+
     print_html_prologue($title, $langCode, $extra_css, $extra_js);
 
     if (!empty($operator_username_enc)) {
         $title .= " :: $operator_username_enc";
-    } 
+    }
 
     print_title_and_help($title, $help);
-    
-    include_once('include/management/actionMessages.php');
-    
+
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'actionMessages.php' ]);
+
     if (!empty($operator_username)) {
         // set form component descriptors
         $input_descriptors0 = array();
-        
+
         $input_descriptors0[] = array(
                                         "type" => "hidden",
-                                        "value" => $operator_username_enc,
+                                        "value" => $operator_username,
                                         "name" => "operator_username"
                                      );
 
@@ -240,14 +148,16 @@
                                         "value" => ((isset($operator_username)) ? $operator_username : ""),
                                         "disabled" => true,
                                      );
-                                    
+
         $input_descriptors0[] = array(
                                         "id" => "operator_password",
                                         "name" => "operator_password",
                                         "caption" => t('all','Password'),
                                         "type" => $hiddenPassword,
                                         "value" => "",
-                                        "random" => true
+                                        "random" => true,
+                                        "disabled" => $operator_auth_source === 'ldap',
+                                        "required" => false
                                      );
 
         $totp_status = (intval($operator_totp_enabled) === 1)
@@ -257,7 +167,7 @@
         $input_descriptors0[] = array(
                                         "id" => "operator_totp_status",
                                         "name" => "operator_totp_status",
-                                        "caption" => "Two-factor authentication",
+                                        "caption" => t('sidebar','TwoFactorAuthentication'),
                                         "type" => "text",
                                         "value" => $totp_status,
                                         "disabled" => true,
@@ -272,70 +182,96 @@
                                             "value" => "1",
                                          );
         }
-                                  
+
         // set navbar stuff
         $navkeys = array( array( 'OperatorInfo', "Operator Info" ), 'ContactInfo', array( 'ACLSettings', "ACL Settings" ), );
 
         // print navbar controls
         print_tab_header($navkeys);
-        
+
         open_form();
-        
+
         // open tab wrapper
         open_tab_wrapper();
-        
+
         // tab 0
         open_tab($navkeys, 0, true);
-        
+
         $fieldset0_descriptor = array( "title" => "Account Settings" );
-        
+
         open_fieldset($fieldset0_descriptor);
-        
+
         foreach ($input_descriptors0 as $input_descriptor) {
             print_form_component($input_descriptor);
         }
-        
+
         close_fieldset();
-        
+
         close_tab($navkeys, 0);
-        
+
         // tab 1
         open_tab($navkeys, 1);
-        include_once('include/management/operatorinfo.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'operatorinfo.php' ]);
         close_tab($navkeys, 1);
-        
+
         // tab 2
         open_tab($navkeys, 2);
-        include_once('include/management/operator_acls.php');
+        include_once implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_MANAGEMENT'], 'operator_acls.php' ]);
         drawOperatorACLs($curr_operator_id);
         close_tab($navkeys, 2);
-        
+
         // close tab wrapper
         close_tab_wrapper();
-        
+
         $input_descriptors1 = array();
-        
+
+        $input_descriptors1[] = array(
+                                        "type" => "hidden",
+                                        "value" => (string) $curr_operator_id,
+                                        "name" => "identity_operator_id"
+                                     );
+        $input_descriptors1[] = array(
+                                        "type" => "hidden",
+                                        "value" => $current_auth_source,
+                                        "name" => "identity_auth_source"
+                                     );
+        $input_descriptors1[] = array(
+                                        "type" => "hidden",
+                                        "value" => $current_external_id ?? "",
+                                        "name" => "identity_external_id"
+                                     );
         $input_descriptors1[] = array(
                                         "type" => "hidden",
                                         "value" => dalo_csrf_token(),
                                         "name" => "csrf_token"
                                      );
-        
-                
+
+
         $input_descriptors1[] = array(
                                         "type" => "submit",
                                         "name" => "submit",
                                         "value" => t('buttons','apply')
                                      );
-        
+
         foreach ($input_descriptors1 as $input_descriptor) {
             print_form_component($input_descriptor);
         }
-        
+
         close_form();
 
     }
-    
-    include('include/config/logging.php');
-    print_footer_and_html_epilogue();
-?>
+
+    include implode(DIRECTORY_SEPARATOR, [ $configValues['OPERATORS_INCLUDE_CONFIG'], 'logging.php' ]);
+    $inline_extra_js = <<<'JS'
+function operatorAuthSourceChanged(select) {
+    var password = document.getElementById('operator_password');
+    if (!password) { return; }
+    var isLdap = select && select.value === 'ldap';
+    password.disabled = isLdap;
+    if (isLdap) { password.value = ''; }
+}
+document.addEventListener('DOMContentLoaded', function () {
+    operatorAuthSourceChanged(document.getElementById('auth_source'));
+});
+JS;
+    print_footer_and_html_epilogue($inline_extra_js);

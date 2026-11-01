@@ -38,119 +38,29 @@
     $logDebugSQL = "";
 
 
-    include('../common/includes/db_open.php');
+    require_once('library/catalog_reads_pdo.php');
+    $catalog_pdo = null;
+    require_once('../common/includes/pdo_connection.php');
+    require_once('library/pos_update.php');
 
 
-    function addPlanProfile($dbSocket, $username, $planName, $oldplanName) {
+    $username_input = $_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['username'] ?? '') : ($_GET['username'] ?? '');
+    $username = is_string($username_input) ? trim($username_input) : '';
 
-        global $logDebugSQL;
-        global $configValues;
+    try {
+        $source = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
+        dalo_catalog_read_inputs($source, array('username'));
+        $catalog_pdo = dalo_catalog_read_open($configValues);
+        $table = dalo_read_table($catalog_pdo, $configValues, 'CONFIG_DB_TBL_RADCHECK');
+        $exists = (int)dalo_catalog_read_rows($catalog_pdo, "SELECT COUNT(DISTINCT(username)) FROM $table WHERE username=:username", array(':username'=>$username))[0][0] > 0;
+        if (!$exists) { $username = ''; }
+        $table = dalo_read_table($catalog_pdo, $configValues, 'CONFIG_DB_TBL_DALOUSERINFO');
+        $portal_password_is_set = (int)dalo_catalog_read_rows($catalog_pdo, "SELECT COUNT(id) FROM $table WHERE username=:username AND portalloginpassword IS NOT NULL AND portalloginpassword<>''", array(':username'=>$username))[0][0] === 1;
+    } catch (Throwable $error) {
+        dalo_catalog_read_failure($error); $username = ''; $portal_password_is_set = false;
+    } finally { $catalog_pdo = null; }
 
-        $sql = sprintf("DELETE FROM %s WHERE UserName='%s'",
-                       $configValues['CONFIG_DB_TBL_RADUSERGROUP'], $dbSocket->escapeSimple($username));
-        $res = $dbSocket->query($sql);
-        $logDebugSQL .= "$sql;\n";
-
-        // search to see if the plan is associated with any profiles
-        $sql = sprintf("SELECT profile_name FROM %s WHERE plan_name='%s'",
-                       $configValues['CONFIG_DB_TBL_DALOBILLINGPLANSPROFILES'], $dbSocket->escapeSimple($planName));
-
-        // $res is an array of all profiles associated with this plan
-        $cols = $dbSocket->getCol($sql);
-
-        // if the profile list for this plan isn't empty, we associate it with the user
-        if (count($cols) > 0) {
-
-            // if profiles are associated with this plan, loop through each and add a usergroup entry for each
-            foreach($cols as $profile_name) {
-                $priority = normalize_user_group_priority($profile_name, 0);
-                $sql = sprintf("INSERT INTO %s (username, groupname, priority) VALUES ('%s','%s',%d)",
-                               $configValues['CONFIG_DB_TBL_RADUSERGROUP'],
-                               $dbSocket->escapeSimple($username),
-                               $dbSocket->escapeSimple($profile_name), $priority);
-                $res = $dbSocket->query($sql);
-            }
-        }
-    }
-
-    function addUserProfiles($dbSocket, $username, $planName, $oldplanName, $groups, $groups_priority, $newgroups) {
-
-        global $logDebugSQL;
-        global $configValues;
-
-        // update usergroup mapping (existing)
-        if (is_array($groups) && count($groups) > 0) {
-
-            $sql = sprintf("DELETE FROM %s WHERE username='%s'",
-                           $configValues['CONFIG_DB_TBL_RADUSERGROUP'], $dbSocket->escapeSimple($username));
-            $res = $dbSocket->query($sql);
-            $logDebugSQL .= "$sql;\n";
-
-
-            $insert_group_format = "INSERT INTO %s (username, groupname, priority) VALUES ('%s', '%s', %s)";
-
-            foreach ($groups as $i => $group) {
-                $group = trim($group);
-
-                if (empty($group)) {
-                    continue;
-                }
-
-                $priority = (!empty($groups_priority[$i])) ? $groups_priority[$i] : "0";
-                $priority = normalize_user_group_priority($group, $priority);
-
-                $sql = sprintf($insert_group_format,
-                               $configValues['CONFIG_DB_TBL_RADUSERGROUP'],
-                               $dbSocket->escapeSimple($username),
-                               $dbSocket->escapeSimple($group),
-                               $dbSocket->escapeSimple($priority));
-                $res = $dbSocket->query($sql);
-                $logDebugSQL .= "$sql;\n";
-            }
-
-        }
-
-        // insert usergroup mapping (new groups)
-        if (is_array($newgroups) && count($newgroups) > 0) {
-            foreach ($newgroups as $newgroup) {
-                $newgroup = trim($newgroup);
-
-                if (empty($newgroup)) {
-                    continue;
-                }
-
-                $priority = normalize_user_group_priority($newgroup, 0);
-                $sql = sprintf($insert_group_format,
-                               $configValues['CONFIG_DB_TBL_RADUSERGROUP'],
-                               $dbSocket->escapeSimple($username),
-                               $dbSocket->escapeSimple($newgroup), $priority);
-                $res = $dbSocket->query($sql);
-                $logDebugSQL .= "$sql;\n";
-            }
-        }
-
-    }
-
-
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $username = (array_key_exists('username', $_POST) && !empty(str_replace("%", "", trim($_POST['username']))))
-                  ? str_replace("%", "", trim($_POST['username'])) : "";
-    } else {
-        $username = (array_key_exists('username', $_REQUEST) && !empty(str_replace("%", "", trim($_REQUEST['username']))))
-                  ? str_replace("%", "", trim($_REQUEST['username'])) : "";
-    }
-
-    // check if this user exists
-    $exists = user_exists($dbSocket, $username);
-
-    if (!$exists) {
-        // we reset the username if it does not exist
-        $username = "";
-    }
-
-    $username_enc = (!empty($username)) ? htmlspecialchars($username, ENT_QUOTES, 'UTF-8') : "";
-
-    //feed the sidebar variables
+    $username_enc = $username !== '' ? htmlspecialchars($username, ENT_QUOTES, 'UTF-8') : '';
     $edit_username = $username_enc;
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -161,10 +71,13 @@
             $current_datetime = date('Y-m-d H:i:s');
             $currBy = $operator;
 
-            $planName = (array_key_exists('planName', $_POST) && isset($_POST['planName'])) ? trim($_POST['planName']) : "";
-            $oldplanName = (array_key_exists('oldplanName', $_POST) && isset($_POST['oldplanName'])) ? trim($_POST['oldplanName']) : "";
+            $planName = $_POST['planName'] ?? '';
+            $planName = is_string($planName) ? trim($planName) : $planName;
+            $oldplanName = $_POST['oldplanName'] ?? '';
+            $oldplanName = is_string($oldplanName) ? trim($oldplanName) : $oldplanName;
             $profiles = (array_key_exists('profiles', $_POST) && isset($_POST['profiles'])) ? $_POST['profiles'] : array();
-            isset($_POST['reassignplanprofiles']) ? $reassignplanprofiles = $_POST['reassignplanprofiles'] : $reassignplanprofiles = "";
+            $reassignplanprofiles_input = $_POST['reassignplanprofiles'] ?? '';
+            $reassignplanprofiles = is_string($reassignplanprofiles_input) ? $reassignplanprofiles_input : '';
 
             isset($_POST['password']) ? $password = $_POST['password'] : $password = "";
             isset($_POST['passwordType']) ? $passwordtype = $_POST['passwordType'] : $passwordtype = "";
@@ -185,14 +98,24 @@
             $notes = (array_key_exists('notes', $_POST) && isset($_POST['notes'])) ? $_POST['notes'] : "";
 
             // first we check user portal login password
-            $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) && !empty(trim($_POST['portalLoginPassword'])))
+            $ui_PortalLoginPassword = (isset($_POST['portalLoginPassword']) &&
+                                       dalo_portal_password_is_acceptable($_POST['portalLoginPassword']))
                                     ? trim($_POST['portalLoginPassword']) : "";
 
-            // these are forced to 0 (disabled) if user portal login password is empty
-            $ui_changeuserinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
+            $ui_hasPortalLoginPassword = $portal_password_is_set;
+            $portal_password_available = $ui_hasPortalLoginPassword
+                                      || dalo_portal_password_is_present($ui_PortalLoginPassword);
+            $portal_access_valid = dalo_portal_access_is_valid($_POST, $ui_hasPortalLoginPassword);
+
+            $ui_changeuserinfo = ($portal_password_available && isset($_POST['changeUserInfo']) && $_POST['changeUserInfo'] === '1')
                                ? '1' : '0';
-            $ui_enableUserPortalLogin = (!empty($ui_PortalLoginPassword) &&  isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
+            $ui_enableUserPortalLogin = ($portal_password_available && isset($_POST['enableUserPortalLogin']) && $_POST['enableUserPortalLogin'] === '1')
                                       ? '1' : '0';
+
+            if (!$portal_access_valid) {
+                $failureMsg = 'A portal password is required before portal access can be enabled.';
+                $logAction .= "Failed updating user because portal access requires a password on page: ";
+            }
 
             $groups = (isset($_POST['groups']) && is_array($_POST['groups'])) ? $_POST['groups'] : array();
 
@@ -214,8 +137,7 @@
             $bi_creditcardexp = (array_key_exists('bi_creditcardexp', $_POST) && isset($_POST['bi_creditcardexp'])) ? $_POST['bi_creditcardexp'] : "";
             $bi_notes = (array_key_exists('bi_notes', $_POST) && isset($_POST['bi_notes'])) ? $_POST['bi_notes'] : "";
 
-            // this is forced to 0 (disabled) if user portal login password is empty
-            $bi_changeuserbillinfo = (!empty($ui_PortalLoginPassword) && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
+            $bi_changeuserbillinfo = ($portal_password_available && isset($_POST['bi_changeuserbillinfo']) && $_POST['bi_changeuserbillinfo'] === '1')
                                    ? '1' : '0';
 
             $bi_lead = (array_key_exists('bi_lead', $_POST) && isset($_POST['bi_lead'])) ? $_POST['bi_lead'] : "";
@@ -230,138 +152,54 @@
             $bi_faxinvoice = (array_key_exists('bi_faxinvoice', $_POST) && isset($_POST['bi_faxinvoice'])) ? $_POST['bi_faxinvoice'] : "";
             $bi_emailinvoice = (array_key_exists('bi_emailinvoice', $_POST) && isset($_POST['bi_emailinvoice'])) ? $_POST['bi_emailinvoice'] : "";
 
-            if (!empty($username)) {
-
-                // insert userinfo
-                $sql = sprintf("SELECT COUNT(DISTINCT(username)) FROM %s WHERE username='%s'",
-                               $configValues['CONFIG_DB_TBL_DALOUSERINFO'], $dbSocket->escapeSimple($username));
-                $res = $dbSocket->query($sql);
-                $userinfoExist = intval($res->fetchrow()[0]) > 0;
-                $logDebugSQL .= "$sql;\n";
-
-                // if there were no records for this user present in the userinfo table
-                if (!$userinfoExist) {
-                    // insert user information table
-                    $sql = sprintf("INSERT INTO %s (id, username, firstname, lastname, email, department, company,
-                                                    workphone, homephone,  mobilephone, address, city, state, country,
-                                                    zip, notes, changeuserinfo, portalloginpassword, enableportallogin,
-                                                    creationdate, creationby, updatedate, updateby)
-                                            VALUES (0, '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',
-                                                    '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s',  '%s', '%s',
-                                                    '%s', NULL, NULL)", $configValues['CONFIG_DB_TBL_DALOUSERINFO'],
-                                                                        $dbSocket->escapeSimple($username), $dbSocket->escapeSimple($firstname),
-                                                                        $dbSocket->escapeSimple($lastname), $dbSocket->escapeSimple($email),
-                                                                        $dbSocket->escapeSimple($department), $dbSocket->escapeSimple($company),
-                                                                        $dbSocket->escapeSimple($workphone), $dbSocket->escapeSimple($homephone),
-                                                                        $dbSocket->escapeSimple($mobilephone), $dbSocket->escapeSimple($address),
-                                                                        $dbSocket->escapeSimple($city), $dbSocket->escapeSimple($state),
-                                                                        $dbSocket->escapeSimple($country), $dbSocket->escapeSimple($zip),
-                                                                        $dbSocket->escapeSimple($notes), $dbSocket->escapeSimple($ui_changeuserinfo),
-                                                                        $dbSocket->escapeSimple($ui_PortalLoginPassword),
-                                                                        $dbSocket->escapeSimple($ui_enableUserPortalLogin),
-                                                                        $dbSocket->escapeSimple($current_datetime), $dbSocket->escapeSimple($currBy));
-                } else {
-                   // update user information table
-                   $sql = sprintf("UPDATE %s SET firstname='%s', lastname='%s', email='%s', department='%s', company='%s', workphone='%s',
-                                                 homephone='%s', mobilephone='%s', address='%s', city='%s', state='%s', country='%s',
-                                                 zip='%s', notes='%s', changeuserinfo='%s', portalloginpassword='%s', enableportallogin='%s',
-                                                 updatedate='%s', updateby='%s'
-                                    WHERE username='%s'", $configValues['CONFIG_DB_TBL_DALOUSERINFO'], $dbSocket->escapeSimple($firstname),
-                                                          $dbSocket->escapeSimple($lastname), $dbSocket->escapeSimple($email),
-                                                          $dbSocket->escapeSimple($department), $dbSocket->escapeSimple($company),
-                                                          $dbSocket->escapeSimple($workphone), $dbSocket->escapeSimple($homephone),
-                                                          $dbSocket->escapeSimple($mobilephone), $dbSocket->escapeSimple($address),
-                                                          $dbSocket->escapeSimple($city), $dbSocket->escapeSimple($state),
-                                                          $dbSocket->escapeSimple($country), $dbSocket->escapeSimple($zip),
-                                                          $dbSocket->escapeSimple($notes), $dbSocket->escapeSimple($ui_changeuserinfo),
-                                                          $dbSocket->escapeSimple($ui_PortalLoginPassword),
-                                                          $dbSocket->escapeSimple($ui_enableUserPortalLogin),
-                                                          $dbSocket->escapeSimple($current_datetime), $dbSocket->escapeSimple($currBy),
-                                                          $dbSocket->escapeSimple($username));
-                }
-
-                // execute the insert/update onto userinfo
-                $res = $dbSocket->query($sql);
-                $logDebugSQL .= "$sql;\n";
-
-
-                /* perform user billing info table instructions */
-                $sql = sprintf("SELECT COUNT(DISTINCT(username)) FROM %s WHERE username='%s'",
-                               $configValues['CONFIG_DB_TBL_DALOUSERBILLINFO'], $dbSocket->escapeSimple($username));
-                $res = $dbSocket->query($sql);
-                $userbillinfoExist = $res->fetchrow()[0];
-                $logDebugSQL .= "$sql;\n";
-
-                // if there were no records for this user present in the userbillinfo table
-                if (!$userbillinfoExist) {
-                    // insert user billing information table
-                    $sql = sprintf("INSERT INTO %s (id, username, contactperson, company, email, phone, address,
-                                                    city, state, country, zip, paymentmethod, cash, creditcardname,
-                                                    creditcardnumber, creditcardverification, creditcardtype,
-                                                    creditcardexp, notes, changeuserbillinfo, creationdate,
-                                                    creationby, updatedate, updateby)
-                                           VALUES (0, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s',
-                                                   '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s',
-                                                   NULL, NULL)", $configValues['CONFIG_DB_TBL_DALOUSERBILLINFO'],
-                                                                 $dbSocket->escapeSimple($username), $dbSocket->escapeSimple($bi_contactperson),
-                                                                 $dbSocket->escapeSimple($bi_company), $dbSocket->escapeSimple($bi_email),
-                                                                 $dbSocket->escapeSimple($bi_phone), $dbSocket->escapeSimple($bi_address),
-                                                                 $dbSocket->escapeSimple($bi_city), $dbSocket->escapeSimple($bi_state),
-                                                                 $dbSocket->escapeSimple($bi_country), $dbSocket->escapeSimple($bi_zip),
-                                                                 $dbSocket->escapeSimple($bi_paymentmethod), $dbSocket->escapeSimple($bi_cash),
-                                                                 $dbSocket->escapeSimple($bi_creditcardname),
-                                                                 $dbSocket->escapeSimple($bi_creditcardnumber),
-                                                                 $dbSocket->escapeSimple($bi_creditcardverification),
-                                                                 $dbSocket->escapeSimple($bi_creditcardtype),
-                                                                 $dbSocket->escapeSimple($bi_creditcardexp), $dbSocket->escapeSimple($bi_notes),
-                                                                 $dbSocket->escapeSimple($bi_changeuserbillinfo), $current_datetime, $currBy);
-                } else {
-                    // update user information table
-                    $sql = sprintf("UPDATE %s SET `contactperson`='%s', `planname`='%s', `company`='%s', `email`='%s', `phone`='%s',
-                                                  `paymentmethod`='%s', `cash`='%s', `creditcardname`='%s', `creditcardnumber`='%s',
-                                                  `creditcardverification`='%s', `creditcardtype`='%s', `creditcardexp`='%s', `address`='%s',
-                                                  `city`='%s', `state`='%s', `country`='%s', `zip`='%s', `notes`='%s', `changeuserbillinfo`='%s',
-                                                  `lead`='%s', `coupon`='%s', `ordertaker`='%s', `billstatus`='%s', `nextinvoicedue`='%s',
-                                                  `billdue`='%s', `postalinvoice`='%s', `faxinvoice`='%s', `emailinvoice`='%s', `updatedate`='%s',
-                                                  `updateby`='%s'
-                                            WHERE `username`='%s'", $configValues['CONFIG_DB_TBL_DALOUSERBILLINFO'], $dbSocket->escapeSimple($bi_contactperson),
-                                                                    $dbSocket->escapeSimple($planName), $dbSocket->escapeSimple($bi_company),
-                                                                    $dbSocket->escapeSimple($bi_email), $dbSocket->escapeSimple($bi_phone),
-                                                                    $dbSocket->escapeSimple($bi_paymentmethod), $dbSocket->escapeSimple($bi_cash),
-                                                                    $dbSocket->escapeSimple($bi_creditcardname), $dbSocket->escapeSimple($bi_creditcardnumber),
-                                                                    $dbSocket->escapeSimple($bi_creditcardverification), $dbSocket->escapeSimple($bi_creditcardtype),
-                                                                    $dbSocket->escapeSimple($bi_creditcardexp), $dbSocket->escapeSimple($bi_address),
-                                                                    $dbSocket->escapeSimple($bi_city), $dbSocket->escapeSimple($bi_state),
-                                                                    $dbSocket->escapeSimple($bi_country), $dbSocket->escapeSimple($bi_zip),
-                                                                    $dbSocket->escapeSimple($bi_notes), $dbSocket->escapeSimple($bi_changeuserbillinfo),
-                                                                    $dbSocket->escapeSimple($bi_lead), $dbSocket->escapeSimple($bi_coupon),
-                                                                    $dbSocket->escapeSimple($bi_ordertaker), $dbSocket->escapeSimple($bi_billstatus),
-                                                                    $dbSocket->escapeSimple($bi_nextinvoicedue), $dbSocket->escapeSimple($bi_billdue),
-                                                                    $dbSocket->escapeSimple($bi_postalinvoice), $dbSocket->escapeSimple($bi_faxinvoice),
-                                                                    $dbSocket->escapeSimple($bi_emailinvoice), $current_datetime, $currBy,
-                                                                    $dbSocket->escapeSimple($username));
-                }
-
-                // execute the insert/update onto userbillinfo
-                $res = $dbSocket->query($sql);
-                $logDebugSQL .= "$sql;\n";
-
-                if ($reassignplanprofiles == 1) {
-                    // if the user chose to re-assign profiles from the change of plan then we proceed with removing
-                    // all profiles associated with the user and re-assigning them based on the plan's profiles associations
-                    addPlanProfile($dbSocket, $username, $planName, $oldplanName);
-                } else {
-                    // otherwise, we remove all profiles and assign profiles as configured in the profiles tab by the user
-                    if (delete_user_group_mappings($dbSocket, $username)) {
-                        if (count($groups) > 0) {
-                            foreach ($groups as $group) {
-                                list($groupname, $priority) = $group;
-                                insert_single_user_group_mapping($dbSocket, $username, $groupname, $priority);
-                            }
-                        }
+            if (!empty($username) && $portal_access_valid) {
+                $userinfo = array(
+                    'firstname' => $firstname, 'lastname' => $lastname, 'email' => $email,
+                    'department' => $department, 'company' => $company,
+                    'workphone' => $workphone, 'homephone' => $homephone,
+                    'mobilephone' => $mobilephone, 'address' => $address,
+                    'city' => $city, 'state' => $state, 'country' => $country,
+                    'zip' => $zip, 'notes' => $notes,
+                    'changeuserinfo' => $ui_changeuserinfo,
+                    'portalloginpassword' => $ui_PortalLoginPassword,
+                    'enableportallogin' => $ui_enableUserPortalLogin,
+                );
+                $billinfo = array(
+                    'contactperson' => $bi_contactperson, 'company' => $bi_company,
+                    'email' => $bi_email, 'phone' => $bi_phone,
+                    'address' => $bi_address, 'city' => $bi_city,
+                    'state' => $bi_state, 'country' => $bi_country,
+                    'zip' => $bi_zip, 'paymentmethod' => $bi_paymentmethod,
+                    'cash' => $bi_cash, 'creditcardname' => $bi_creditcardname,
+                    'creditcardnumber' => $bi_creditcardnumber,
+                    'creditcardverification' => $bi_creditcardverification,
+                    'creditcardtype' => $bi_creditcardtype,
+                    'creditcardexp' => $bi_creditcardexp, 'notes' => $bi_notes,
+                    'changeuserbillinfo' => $bi_changeuserbillinfo,
+                    'lead' => $bi_lead, 'coupon' => $bi_coupon,
+                    'ordertaker' => $bi_ordertaker, 'billstatus' => $bi_billstatus,
+                    'nextinvoicedue' => $bi_nextinvoicedue, 'billdue' => $bi_billdue,
+                    'postalinvoice' => $bi_postalinvoice, 'faxinvoice' => $bi_faxinvoice,
+                    'emailinvoice' => $bi_emailinvoice,
+                );
+                try {
+                    if (!is_string($planName) || !is_array($groups) ||
+                        !is_string($ui_PortalLoginPassword) ||
+                        !is_string($oldplanName) || !is_string($reassignplanprofiles_input)) {
+                        throw new InvalidArgumentException('Invalid POS edit request');
                     }
+                    $pdo = dalo_pdo_connect($configValues, $_SESSION['location_name'] ?? 'default');
+                    dalo_pos_update($pdo, $configValues, $username, $planName,
+                        (string)$reassignplanprofiles === '1', $groups, $userinfo,
+                        $billinfo, $current_datetime, $currBy);
+                    $successMsg = 'Updated user information';
+                    $logAction .= 'Updated POS user on page: ';
+                    $logDebugSQL .= 'POS user, billing and profile update (PDO transaction);\n';
+                } catch (Throwable $error) {
+                    $failureMsg = 'Failed to update user information';
+                    $logAction .= 'Failed POS user update on page: ';
+                    error_log('POS edit failed (' . get_class($error) . ')');
                 }
-
             }
 
         } else {
@@ -372,92 +210,103 @@
 
     }
 
-    if (empty($username)) {
-        $failureMsg = "You have specified an empty or invalid username";
+    if ($username === '') {
+        if (!isset($failureMsg)) { $failureMsg = "You have specified an empty or invalid username"; }
         $inline_extra_js = "";
     } else {
 
-        /* an sql query to retrieve the password for the username to use in the quick link for the user test connectivity */
-        $sql = sprintf("SELECT value FROM %s WHERE username='%s' AND attribute LIKE '%%-Password' ORDER BY id DESC LIMIT 1",
-                       $configValues['CONFIG_DB_TBL_RADCHECK'], $dbSocket->escapeSimple($username));
-        $res = $dbSocket->query($sql);
-        $logDebugSQL .= "$sql;\n";
-        $user_password = $res->fetchRow()[0];
+        try {
+            $catalog_pdo = dalo_catalog_read_open($configValues);
+            /* an sql query to retrieve the password for the username to use in the quick link for the user test connectivity */
+            $sql = sprintf("SELECT value FROM %s WHERE username=:username AND attribute LIKE '%%-Password' ORDER BY id DESC LIMIT 1",
+                           dalo_read_table($catalog_pdo, $configValues, 'CONFIG_DB_TBL_RADCHECK'));
+            $rows = dalo_catalog_read_rows($catalog_pdo, $sql, array(':username'=>$username));
+            $logDebugSQL .= "$sql;\n";
+            $user_password = $rows[0][0] ?? '';
 
-        /* fill-in all the user info details */
-        $sql = sprintf("SELECT firstname, lastname, email, department, company, workphone, homephone, mobilephone, address, city,
-                               state, country, zip, notes, changeuserinfo, portalloginpassword, enableportallogin, creationdate,
-                               creationby, updatedate, updateby
-                          FROM %s WHERE username='%s'", $configValues['CONFIG_DB_TBL_DALOUSERINFO'],
-                                                        $dbSocket->escapeSimple($username));
-        $res = $dbSocket->query($sql);
-        $logDebugSQL .= "$sql;\n";
+            /* fill-in all the user info details */
+            $sql = sprintf("SELECT firstname, lastname, email, department, company, workphone, homephone, mobilephone, address, city,
+                                   state, country, zip, notes, changeuserinfo,
+                                   (portalloginpassword IS NOT NULL AND portalloginpassword<>'') AS has_portal_password,
+                                   enableportallogin, creationdate,
+                                   creationby, updatedate, updateby
+                              FROM %s WHERE username=:username", dalo_read_table($catalog_pdo, $configValues, 'CONFIG_DB_TBL_DALOUSERINFO'));
+            $rows = dalo_catalog_read_rows($catalog_pdo, $sql, array(':username'=>$username));
+            $logDebugSQL .= "$sql;\n";
 
-        list(
-              $ui_firstname, $ui_lastname, $ui_email, $ui_department, $ui_company, $ui_workphone, $ui_homephone,
-              $ui_mobilephone, $ui_address, $ui_city, $ui_state, $ui_country, $ui_zip, $ui_notes, $ui_changeuserinfo,
-              $ui_PortalLoginPassword, $ui_enableUserPortalLogin, $ui_creationdate, $ui_creationby, $ui_updatedate,
-              $ui_updateby
-            ) = $res->fetchRow();
+            list(
+                  $ui_firstname, $ui_lastname, $ui_email, $ui_department, $ui_company, $ui_workphone, $ui_homephone,
+                  $ui_mobilephone, $ui_address, $ui_city, $ui_state, $ui_country, $ui_zip, $ui_notes, $ui_changeuserinfo,
+                  $ui_hasPortalLoginPassword, $ui_enableUserPortalLogin, $ui_creationdate, $ui_creationby, $ui_updatedate,
+                  $ui_updateby
+                ) = $rows[0] ?? array_fill(0, 21, '');
 
 
-        /* fill-in all the user bill info details */
-        $sql = sprintf("SELECT id, planName, contactperson, company, email, phone, address, city, state, country, zip, paymentmethod,
-                               cash, creditcardname, creditcardnumber, creditcardverification, creditcardtype, creditcardexp,
-                               notes, changeuserbillinfo, `lead`, coupon, ordertaker, billstatus, lastbill, nextbill,
-                               nextinvoicedue, billdue, postalinvoice, faxinvoice, emailinvoice, creationdate, creationby,
-                               updatedate, updateby
-                          FROM %s WHERE username='%s'", $configValues['CONFIG_DB_TBL_DALOUSERBILLINFO'],
-                                                        $dbSocket->escapeSimple($username));
-        $res = $dbSocket->query($sql);
-        $logDebugSQL .= "$sql;\n";
+            /* fill-in all the user bill info details */
+            $sql = sprintf("SELECT id, planName, contactperson, company, email, phone, address, city, state, country, zip, paymentmethod,
+                                   cash, creditcardname, creditcardnumber, creditcardverification, creditcardtype, creditcardexp,
+                                   notes, changeuserbillinfo, `lead`, coupon, ordertaker, billstatus, lastbill, nextbill,
+                                   nextinvoicedue, billdue, postalinvoice, faxinvoice, emailinvoice, creationdate, creationby,
+                                   updatedate, updateby
+                              FROM %s WHERE username=:username", dalo_read_table($catalog_pdo, $configValues, 'CONFIG_DB_TBL_DALOUSERBILLINFO'));
+            $rows = dalo_catalog_read_rows($catalog_pdo, $sql, array(':username'=>$username));
+            $logDebugSQL .= "$sql;\n";
 
-        list(
-                $user_id, $bi_planname, $bi_contactperson, $bi_company, $bi_email, $bi_phone, $bi_address, $bi_city,
-                $bi_state, $bi_country, $bi_zip, $bi_paymentmethod, $bi_cash, $bi_creditcardname, $bi_creditcardnumber,
-                $bi_creditcardverification, $bi_creditcardtype, $bi_creditcardexp, $bi_notes, $bi_changeuserbillinfo,
-                $bi_lead, $bi_coupon, $bi_ordertaker, $bi_billstatus, $bi_lastbill, $bi_nextbill, $bi_nextinvoicedue,
-                $bi_billdue, $bi_postalinvoice, $bi_faxinvoice, $bi_emailinvoice, $bi_creationdate, $bi_creationby,
-                $bi_updatedate, $bi_updateby
-            ) = $res->fetchRow();
+            list(
+                    $user_id, $bi_planname, $bi_contactperson, $bi_company, $bi_email, $bi_phone, $bi_address, $bi_city,
+                    $bi_state, $bi_country, $bi_zip, $bi_paymentmethod, $bi_cash, $bi_creditcardname, $bi_creditcardnumber,
+                    $bi_creditcardverification, $bi_creditcardtype, $bi_creditcardexp, $bi_notes, $bi_changeuserbillinfo,
+                    $bi_lead, $bi_coupon, $bi_ordertaker, $bi_billstatus, $bi_lastbill, $bi_nextbill, $bi_nextinvoicedue,
+                    $bi_billdue, $bi_postalinvoice, $bi_faxinvoice, $bi_emailinvoice, $bi_creationdate, $bi_creationby,
+                    $bi_updatedate, $bi_updateby
+                ) = $rows[0] ?? array_fill(0, 35, '');
 
+
+        } catch (Throwable $error) {
+            dalo_catalog_read_failure($error);
+            $username = ''; $username_enc = ''; $inline_extra_js = '';
+        } finally { $catalog_pdo = null; }
 
         // inline extra javascript
-        $inline_extra_js = sprintf("var strUsername = 'username=%s';\n", $username_enc);
+        $inline_extra_js = sprintf("var actionUsername = %s;\n", json_encode($username, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT));
 
         $inline_extra_js .= '
 function disableUser() {
+    if (userActionPending) return false;
     if (confirm("You are about to disable this user account\nDo you want to continue?"))  {
-        ajaxGeneric("library/ajax/user_actions.php", "userDisable=true", "returnMessages", strUsername);
+        userAction("userDisable", [actionUsername]);
         return true;
     }
 }
 
 function enableUser() {
+    if (userActionPending) return false;
     if (confirm("You are about to enable this user account\nDo you want to continue?"))  {
-        ajaxGeneric("library/ajax/user_actions.php", "userEnable=true", "returnMessages", strUsername);
+        userAction("userEnable", [actionUsername]);
         return true;
     }
 }
 
 function refillSessionTime() {
+    if (userActionPending) return false;
     if (confirm("You are about to refill session time for this user account\nDo you want to continue?\n\nSuch action will also bill the user if set so in the plant the user is associated with!"))  {
-        ajaxGeneric("library/ajax/user_actions.php", "refillSessionTime=true", "returnMessages", strUsername);
+        userAction("refillSessionTime", [actionUsername]);
         return true;
     }
 }
 
 
 function refillSessionTraffic() {
+    if (userActionPending) return false;
     if (confirm("You are about to refill session traffic for this user account\nDo you want to continue?\n\nSuch action will also bill the user if set so in the plant the user is associated with!"))  {
-        ajaxGeneric("library/ajax/user_actions.php", "refillSessionTraffic=true", "returnMessages", strUsername);
+        userAction("refillSessionTraffic", [actionUsername]);
         return true;
     }
 }
 ' . "\n";
     }
 
-    include('../common/includes/db_close.php');
+
 
     $hiddenPassword = (strtolower($configValues['CONFIG_IFACE_PASSWORD_HIDDEN']) == "yes")
                     ? 'password' : 'text';
@@ -466,10 +315,7 @@ function refillSessionTraffic() {
     $extra_css = array();
 
     $extra_js = array(
-        "static/js/ajax.js",
-        "static/js/ajaxGeneric.js",
         "static/js/productive_funcs.js",
-        "static/js/dynamic_attributes.js",
         "static/js/pages_common.js",
     );
 
@@ -489,7 +335,7 @@ function refillSessionTraffic() {
     include_once('include/management/actionMessages.php');
 
     $inline_extra_js = "";
-    if (!empty($username)) {
+    if ($username !== '') {
 
         // ajax return div
         echo '<div id="returnMessages"></div>';
@@ -645,9 +491,18 @@ EOF;
         $groupTerminology = "Profile";
         $groupTerminologyPriority = "ProfilePriority";
 
-        include('../common/includes/db_open.php');
-        include_once('include/management/groups.php');
-        include('../common/includes/db_close.php');
+        $dbSocket = null;
+        ob_start();
+        try {
+            $dbSocket = dalo_catalog_read_open($configValues);
+            include_once('include/management/groups.php');
+            ob_end_flush();
+        } catch (Throwable $error) {
+            ob_end_clean();
+            dalo_catalog_read_failure($error);
+            include('include/management/actionMessages.php');
+        } finally { $dbSocket = null; }
+
 
         close_tab($navkeys, 3);
 
@@ -700,7 +555,7 @@ EOF;
 
 window.onload = function() {
     setupAccordion();
-    ajaxGeneric("library/ajax/user_actions.php", "checkDisabled=true", "returnMessages", strUsername);
+    userAction("checkDisabled", [actionUsername]);
 };
 
 EOF;
