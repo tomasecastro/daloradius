@@ -22,3 +22,4 @@ app/common/library/htmlpurifier/HTMLPurifier/DefinitionCache/Serializer/HTML/*
 # [002-CONSTITUTION] copia runtime de constitution (no versionar)
 .specify/constitution.md
 
+graphify-out/*
