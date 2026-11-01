@@ -156,7 +156,7 @@ EOF;
     // opening main wrapper container
     echo <<<EOF
 
-        <div class="container-fluid app-shell">
+        <div class="container-fluid app-shell px-0">
             <div class="row g-0">
                 <aside id="sidebarOffcanvas" class="offcanvas-lg offcanvas-start app-sidebar col-lg-2 bg-light text-dark border-end"
                        tabindex="-1" aria-labelledby="sidebarOffcanvasLabel">
@@ -922,11 +922,26 @@ function print_input_field($input_descriptor) {
     echo '>';
 
     if (array_key_exists('random', $input_descriptor) && $input_descriptor['random']) {
-        $onclick = sprintf("randomAlphanumeric('%s', 8, '%s')",
-                           $input_descriptor['id'], $configValues['CONFIG_USER_ALLOWEDRANDOMCHARS']);
+        // The alphabet is operator-controlled config. Encode it for a JS string and
+        // then for the HTML attribute so a stored value cannot break out of onclick.
+        $allowedChars = json_encode(
+            (string)($configValues['CONFIG_USER_ALLOWEDRANDOMCHARS'] ?? ''),
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+        );
+        if (!is_string($allowedChars)) {
+            $allowedChars = '""';
+        }
+        $onclick = sprintf(
+            "randomAlphanumeric(%s, 8, %s)",
+            json_encode((string)$input_descriptor['id'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT),
+            $allowedChars
+        );
 
         echo '<span class="input-group-text"><button class="btn btn-link btn-sm" type="button"';
-        printf(' onclick="%s" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Random">', $onclick);
+        printf(
+            ' onclick="%s" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Random">',
+            htmlspecialchars($onclick, ENT_QUOTES, 'UTF-8')
+        );
         echo '<i class="bi bi-shuffle"></i>'
            . '</button>'
            . '</span>'
