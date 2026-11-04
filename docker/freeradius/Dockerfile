@@ -27,6 +27,7 @@ RUN apt-get update \
 		tzdata \
 		net-tools \
 		mariadb-client \
+		logrotate \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Create directories
@@ -37,12 +38,21 @@ WORKDIR /app
 # Copy init script to image
 COPY docker/freeradius/init-freeradius.sh /app
 
+# Copy the periodic logrotate runner (containers have no cron daemon)
+COPY docker/freeradius/logrotate-loop.sh /app
+
+# Copy the orphan-session cleanup artifacts (Spec 012)
+COPY docker/freeradius/scripts /app/scripts
+
 # Copy fork SQL artifacts (NAS client, etc.) - applied by apply_fork_migrations()
 COPY docker/freeradius/migrations /app/migrations
 
 # Make init script executable
 RUN sed -i 's/\r$//' /app/init-freeradius.sh \
-	&& chmod +x /app/init-freeradius.sh
+	&& sed -i 's/\r$//' /app/logrotate-loop.sh \
+	&& chmod +x /app/init-freeradius.sh /app/logrotate-loop.sh \
+	&& sed -i 's/\r$//' /app/scripts/*.sh \
+	&& chmod +x /app/scripts/*.sh
 
 # Expose FreeRADIUS Ports
 EXPOSE 1812/udp 1813/udp

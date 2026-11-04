@@ -146,7 +146,58 @@ function fix_nas_ipv4_priority {
 	fi
 }
 
+# Seed the external certificate volumes on first boot (Spec 015).
+#
+# The Debian snakeoil pair lives inside the image, so a rebuilt container gets
+# a brand-new self-signed certificate and every client fails with "unknown CA"
+# until the certificate is redistributed. Copying the pair into the bind-mount
+# volumes on the first boot makes it persistent: later rebuilds reuse the same
+# certificate instead of minting a new one.
+#
+# Never overwrites an operator-provided certificate: seeding only happens when
+# the volumes do not already contain a server certificate.
+function seed_external_certs_from_snakeoil {
+	local cert_ext_path="$1"
+	local private_ext_path="$2"
+
+	[ -d "$cert_ext_path" ] && [ -d "$private_ext_path" ] || return 0
+
+	if [ -f "$cert_ext_path/server.pem" ] || [ -f "$cert_ext_path/ca.pem" ] || [ -f "$private_ext_path/server.key" ]; then
+		return 0
+	fi
+
+	local snakeoil_cert=/etc/ssl/certs/ssl-cert-snakeoil.pem
+	local snakeoil_key=/etc/ssl/private/ssl-cert-snakeoil.key
+	[ -f "$snakeoil_cert" ] && [ -f "$snakeoil_key" ] || return 0
+
+	if ! cp "$snakeoil_cert" "$cert_ext_path/server.pem" 2>/dev/null; then
+		echo "WARNING: $cert_ext_path is not writable; the snakeoil certificate will not survive a rebuild." >&2
+		return 0
+	fi
+	cp "$snakeoil_cert" "$cert_ext_path/ca.pem" 2>/dev/null || true
+	cp "$snakeoil_key" "$private_ext_path/server.key" 2>/dev/null || true
+	echo "Seeded the external certificate volumes with the Debian snakeoil pair (now persistent)."
+}
+
+# Explain which certificate file is missing when the operator provided an
+# incomplete set (Spec 015). Without this, a deployment that forgot ca.pem gets
+# the generic "External certs not found" message and silently runs on a pair
+# that does not survive a rebuild.
+function report_missing_cert_files {
+	local cert_ext_path="$1"
+	local private_ext_path="$2"
+	local missing=""
+
+	[ -f "$cert_ext_path/server.pem" ] || missing="$missing $cert_ext_path/server.pem"
+	[ -f "$cert_ext_path/ca.pem" ] || missing="$missing $cert_ext_path/ca.pem"
+	[ -f "$private_ext_path/server.key" ] || missing="$missing $private_ext_path/server.key"
+
+	echo "WARNING: certificate volumes are incomplete; missing:$missing" >&2
+	echo "WARNING: falling back to a certificate pair inside the image, which does NOT survive a container rebuild." >&2
+}
+
 # Configure EAP/TLS certificates following the preference chain:
+#   0. Seed cert_ext/ + private_ext/ from snakeoil on first boot   ← persistence
 #   1. External certs mounted in cert_ext/ + private_ext/  ← if present
 #   2. Debian snakeoil (valid until 2035)                  ← fallback
 #   3. Default FreeRADIUS example certs                    ← last resort
@@ -163,6 +214,8 @@ function configure_external_certs {
 	local private_ext_path="/etc/freeradius/certs/private_ext"
 	local default_cert_dir="$RADIUS_PATH/certs"
 
+	seed_external_certs_from_snakeoil "$cert_ext_path" "$private_ext_path"
+
 	if [ -d "$cert_ext_path" ] && [ -d "$private_ext_path" ] && \
 	   [ -f "$cert_ext_path/server.pem" ] && [ -f "$cert_ext_path/ca.pem" ] && \
 	   [ -f "$private_ext_path/server.key" ]; then
@@ -174,6 +227,12 @@ function configure_external_certs {
 		sed -i 's|ca_file = .*|ca_file = '"$cert_ext_path"'/ca.pem|' "$eap_file"
 		echo "EAP configured to use external certificates."
 	else
+		# Incomplete external set: say exactly what is missing instead of the
+		# generic "not found" message (Spec 015).
+		if [ -f "$cert_ext_path/server.pem" ] || [ -f "$cert_ext_path/ca.pem" ] || [ -f "$private_ext_path/server.key" ]; then
+			report_missing_cert_files "$cert_ext_path" "$private_ext_path"
+		fi
+
 		# Fallback: use Debian snakeoil certificates (valid for 10 years, part of ssl-cert package)
 		if [ -f /etc/ssl/certs/ssl-cert-snakeoil.pem ] && [ -f /etc/ssl/private/ssl-cert-snakeoil.key ]; then
 			echo "External certs not found — configuring EAP to use snakeoil certificates."
@@ -504,6 +563,19 @@ configure_external_certs
 freeradius -f "$@" &
 RADIUS_PID=$!
 
+# Record the PID so the logrotate policy can send SIGHUP to reopen the log.
+mkdir -p /var/run
+echo "$RADIUS_PID" > /var/run/radiusd.pid
+
+# Start the periodic logrotate runner (Spec 014). Containers have no cron.
+/app/logrotate-loop.sh &
+LOGROTATE_PID=$!
+
+# Start the orphan-session cleanup runner (Spec 012). The cleanup script itself
+# is idempotent and serialized with a database advisory lock.
+/app/scripts/session-cleanup-loop.sh &
+CLEANUP_PID=$!
+
 tail -F /var/log/freeradius/radius.log &
 TAIL_PID=$!
 
@@ -512,6 +584,8 @@ _term() {
   echo "Caught signal - shutting down..."
   kill -TERM "$RADIUS_PID" 2>/dev/null
   kill -TERM "$TAIL_PID" 2>/dev/null
+  kill -TERM "$LOGROTATE_PID" 2>/dev/null
+  kill -TERM "$CLEANUP_PID" 2>/dev/null
   wait "$RADIUS_PID"
   wait "$TAIL_PID"
   exit 0
@@ -524,5 +598,7 @@ RADIUS_STATUS=$?
 set -e
 # if freeradius dies, kill the tail and exit with its code
 kill -TERM "$TAIL_PID" 2>/dev/null
+kill -TERM "$LOGROTATE_PID" 2>/dev/null
+kill -TERM "$CLEANUP_PID" 2>/dev/null
 wait "$TAIL_PID" 2>/dev/null
 exit "$RADIUS_STATUS"

@@ -50,9 +50,20 @@ services:
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
       - DEFAULT_CLIENT_SECRET=${DEFAULT_CLIENT_SECRET:-}
       - FREERADIUS_SQL_TLS=${FREERADIUS_SQL_TLS:-disabled}
+      # Log rotation (Spec 014). 0 disables the background runner.
+      - LOGROTATE_INTERVAL_SECONDS=${LOGROTATE_INTERVAL_SECONDS:-3600}
+      # Orphan session cleanup (Spec 012). 0 disables the background runner.
+      - SESSION_CLEANUP_INTERVAL_SECONDS=${SESSION_CLEANUP_INTERVAL_SECONDS:-3600}
+      - SESSION_CLEANUP_WINDOW_MINUTES=${SESSION_CLEANUP_WINDOW_MINUTES:-60}
+      - SESSION_CLEANUP_BATCH_SIZE=${SESSION_CLEANUP_BATCH_SIZE:-1000}
+      - SESSION_CLEANUP_MAX_BATCHES=${SESSION_CLEANUP_MAX_BATCHES:-100}
+      - SESSION_CLEANUP_TERMINATE_CAUSE=${SESSION_CLEANUP_TERMINATE_CAUSE:-Session-Timeout}
     volumes:
       - ../../data/freeradius:/data
       - ../../logs/freeradius:/var/log/freeradius
+      # Log rotation policy (Spec 014). The entrypoint runs a background
+      # logrotate loop because containers have no cron daemon.
+      - ../../docker/freeradius/logrotate.conf:/etc/logrotate.d/freeradius:ro
       - ../../docker/freeradius/ssl/cert_ext:/etc/freeradius/certs/cert_ext
       - ../../docker/freeradius/ssl/private_ext:/etc/freeradius/certs/private_ext
     secrets:

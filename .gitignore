@@ -8,6 +8,8 @@ invoice_preview.html
 !.env.example
 data/
 internal_data/
+logs/
+var/backup/
 secrets/**
 !secrets/**/
 !secrets/**/.gitkeep
@@ -16,6 +18,14 @@ secrets/**
 var/log/*.log
 var/backup/*.sql
 var/backup/*.sql.gz
+
+# Certificates are generated/seeded at runtime (Spec 015). Never commit them:
+# private_ext/server.key is a private key.
+docker/freeradius/ssl/cert_ext/*
+docker/freeradius/ssl/private_ext/*
+!docker/freeradius/ssl/cert_ext/.gitkeep
+!docker/freeradius/ssl/private_ext/.gitkeep
+
 app/common/includes/daloradius.conf.php
 app/common/library/htmlpurifier/HTMLPurifier/DefinitionCache/Serializer/HTML/*
 
@@ -24,3 +34,4 @@ app/common/library/htmlpurifier/HTMLPurifier/DefinitionCache/Serializer/HTML/*
 .specify/*
 
 graphify-out/*
+.git-rewrite/*
