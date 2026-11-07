@@ -19,6 +19,9 @@ app/common/library/htmlpurifier/HTMLPurifier/DefinitionCache/Serializer/HTML/
 docker/
 !docker/*/Dockerfile
 !docker/*/init*.sh
+!docker/freeradius/logrotate-loop.sh
+!docker/freeradius/migrations
+!docker/freeradius/scripts
 setup/
 secrets/
 pending-removal/
